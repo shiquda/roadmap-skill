@@ -54,7 +54,7 @@ npx roadmap-skill-web
 <summary><b>Claude Code</b></summary>
 
 ```bash
-claude mcp add roadmap npx -y roadmap-skill
+claude mcp add roadmap "npx -y roadmap-skill"
 ```
 
 </details>

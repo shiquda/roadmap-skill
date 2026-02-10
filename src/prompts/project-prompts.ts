@@ -4,43 +4,59 @@ import type {
 } from '@modelcontextprotocol/sdk/types.js';
 
 /**
- * Prompt definitions for roadmap projects
+ * 精选Prompts - 帮助Agent更智能地使用Roadmap Skill
  */
 export const projectPrompts: Prompt[] = [
   {
-    name: 'projectPlanningPrompt',
-    description: 'Helps users plan a new project with structured guidance',
+    name: 'recommendNextTasks',
+    description: '智能推荐接下来要完成的优先任务，基于优先级、截止日期和项目状态',
     arguments: [
       {
-        name: 'projectType',
-        description: 'Type of project (roadmap, skill-tree, kanban)',
+        name: 'projectId',
+        description: '特定项目的ID（可选，不提供则分析所有项目）',
+        required: false,
+      },
+      {
+        name: 'limit',
+        description: '推荐任务数量（默认3个）',
         required: false,
       },
     ],
   },
   {
-    name: 'taskManagementPrompt',
-    description: 'Helps users manage and organize tasks effectively',
+    name: 'autoPrioritize',
+    description: '自动分析任务并智能调整优先级，考虑截止日期、任务依赖和项目重要性',
     arguments: [
       {
         name: 'projectId',
-        description: 'ID of the project to manage tasks for',
+        description: '特定项目的ID（可选，不提供则分析所有项目）',
         required: false,
       },
     ],
   },
   {
-    name: 'roadmapOverviewPrompt',
-    description: 'Shows a comprehensive overview of the roadmap',
-    arguments: [],
-  },
-  {
-    name: 'milestoneReviewPrompt',
-    description: 'Helps review and evaluate project milestones',
+    name: 'enhanceTaskDetails',
+    description: '智能补充任务细节，包括描述、验收标准、子任务和所需资源',
     arguments: [
       {
+        name: 'taskId',
+        description: '要完善的任务ID',
+        required: true,
+      },
+    ],
+  },
+  {
+    name: 'quickCapture',
+    description: '快速捕捉想法/任务，自动分类并建议优先级',
+    arguments: [
+      {
+        name: 'idea',
+        description: '要捕捉的想法或任务描述',
+        required: true,
+      },
+      {
         name: 'projectId',
-        description: 'ID of the project to review milestones for',
+        description: '目标项目ID（可选）',
         required: false,
       },
     ],
@@ -48,70 +64,69 @@ export const projectPrompts: Prompt[] = [
 ];
 
 /**
- * Project planning prompt - helps users plan a new project
+ * 智能推荐下一步任务
+ * 分析所有任务，基于优先级、截止日期、依赖关系推荐最优执行顺序
  */
-export function getProjectPlanningPrompt(projectType?: string): GetPromptResult {
-  const typeContext = projectType 
-    ? `You are planning a ${projectType} project.` 
-    : 'You are planning a new project.';
+export function getRecommendNextTasksPrompt(projectId?: string, limit?: string): GetPromptResult {
+  const context = projectId
+    ? `分析项目 ${projectId} 的任务`
+    : '分析所有活跃项目的任务';
+
+  const taskLimit = limit ? parseInt(limit, 10) : 3;
 
   return {
-    description: 'Project Planning Assistant',
+    description: '智能任务推荐助手',
     messages: [
       {
         role: 'user',
         content: {
           type: 'text',
-          text: `${typeContext}
+          text: `${context}，请帮我推荐接下来应该优先完成的${taskLimit}个任务。
 
-I will help you plan your project step by step. Let's start by defining the key aspects:
+## 推荐逻辑（按优先级排序）：
 
-## Step 1: Project Definition
-- What is the name of your project?
-- What is the main goal or objective?
-- Who is the target audience or beneficiary?
+### 1. 紧急且重要（Critical优先级 + 截止日期近）
+- 今天或明天到期的Critical任务
+- 已逾期的高优先级任务
 
-## Step 2: Scope and Timeline
-- What are the start and target completion dates?
-- What are the major deliverables?
-- What is explicitly out of scope?
+### 2. 高价值任务（High优先级 + 有明确截止日期）
+- 本周内到期的High优先级任务
+- 阻塞其他任务的关键路径任务
 
-## Step 3: Key Milestones
-Identify 3-5 major milestones that mark significant progress:
-- Milestone 1: [Name] - Target Date
-- Milestone 2: [Name] - Target Date
-- Milestone 3: [Name] - Target Date
+### 3. 快速获胜（Medium优先级 + 预计耗时短）
+- 可以在1-2小时内完成的Medium任务
+- 能明显提升项目进度的任务
 
-## Step 4: Initial Tasks
-List the first 5-10 tasks to get started:
-- Task name and brief description
-- Priority level (low, medium, high, critical)
-- Estimated completion time
+### 4. 计划内工作
+- 已标记为"in-progress"但未完成的任务
+- 即将到期的Normal优先级任务
 
-## Step 5: Resources and Tags
-- What categories or tags will help organize this project?
-- Are there any specific resources, tools, or people needed?
+## 请执行以下步骤：
 
-## Example
-Here's a simple example for a "Learn TypeScript" skill-tree project:
+1. **列出所有待办任务**（status = todo 或 in-progress）
+2. **筛选出高优先级任务**：critical 和 high
+3. **检查截止日期**：找出即将到期或已逾期的任务
+4. **分析阻塞关系**：识别哪些任务阻塞了其他任务
+5. **生成推荐列表**：给出${taskLimit}个最应该优先处理的任务，包含理由
 
-**Project**: TypeScript Mastery
-**Goal**: Become proficient in TypeScript for web development
-**Timeline**: 3 months (Jan 1 - Mar 31)
+## 输出格式：
 
-**Milestones**:
-1. Complete basic syntax (Week 2)
-2. Build first TypeScript app (Week 6)
-3. Master advanced types (Week 10)
-4. Complete final project (Week 12)
+### 立即处理（Critical）
+1. **任务名** (项目名)
+   - 原因：[为什么这个任务最紧急]
+   - 建议行动：[具体做什么]
 
-**Initial Tasks**:
-1. Set up TypeScript environment (high priority)
-2. Complete "Hello World" tutorial (medium priority)
-3. Study type annotations (high priority)
-4. Practice with interfaces (medium priority)
+### 今日重点（High）
+2. **任务名** (项目名)
+   - 原因：[为什么这个任务重要]
+   - 建议行动：[具体做什么]
 
-Please share your project details, and I'll help you refine the plan!`,
+### 后续跟进
+3. **任务名** (项目名)
+   - 原因：[为什么应该接下来做]
+   - 建议行动：[具体做什么]
+
+请使用 list_tasks 工具获取任务数据，然后给出智能推荐。`,
         },
       },
     ],
@@ -119,92 +134,78 @@ Please share your project details, and I'll help you refine the plan!`,
 }
 
 /**
- * Task management prompt - helps users manage tasks
+ * 自动优先级优化
+ * 根据截止日期、项目进度、任务依赖自动调整优先级
  */
-export function getTaskManagementPrompt(projectId?: string): GetPromptResult {
-  const projectContext = projectId 
-    ? `Managing tasks for project: ${projectId}` 
-    : 'Managing tasks across all projects';
+export function getAutoPrioritizePrompt(projectId?: string): GetPromptResult {
+  const context = projectId
+    ? `分析项目 ${projectId} 的任务优先级`
+    : '分析所有项目的任务优先级';
 
   return {
-    description: 'Task Management Assistant',
+    description: '智能优先级优化助手',
     messages: [
       {
         role: 'user',
         content: {
           type: 'text',
-          text: `${projectContext}
+          text: `${context}，请自动分析并建议优先级调整。
 
-I'll help you manage your tasks effectively. Here are the key areas we can work on:
+## 优先级调整规则：
 
-## Task Organization
+### 升级为 Critical 的条件：
+- [ ] 截止日期在48小时内且未完成
+- [ ] 阻塞了其他high/critical任务
+- [ ] 是项目关键路径上的任务且进度落后
+- [ ] 有外部依赖（如客户、合作方）且时间紧迫
 
-### Current Status Review
-Let's review tasks by status:
-- **Todo**: Tasks waiting to be started
-- **In Progress**: Tasks currently being worked on
-- **Review**: Tasks completed and awaiting review
-- **Done**: Completed tasks
+### 升级为 High 的条件：
+- [ ] 截止日期在1周内
+- [ ] 是重要里程碑的前置任务
+- [ ] 长期卡在"in-progress"状态（超过3天）
+- [ ] 影响多个团队成员的工作
 
-### Priority Management
-Tasks should be prioritized as:
-- **Critical**: Blockers, urgent deadlines, essential functionality
-- **High**: Important features, near-term deadlines
-- **Medium**: Standard work, nice-to-have features
-- **Low**: Backlog items, future improvements
+### 降级为 Medium/Low 的条件：
+- [ ] 截止日期还很远（>2周）且没有依赖
+- [ ] 是"nice to have"功能而非核心功能
+- [ ] 当前阶段不需要，可以延后
 
-## Task Actions
+### 其他考虑因素：
+- **项目整体进度**：进度落后的项目任务应提升优先级
+- **资源可用性**：如果资源紧张，聚焦最高优先级
+- **风险因素**：风险高的任务应提前处理
 
-### Creating New Tasks
-When creating a task, include:
-- Clear, actionable title
-- Detailed description with acceptance criteria
-- Priority level
-- Due date (if applicable)
-- Assignee (if applicable)
-- Relevant tags
+## 请执行以下步骤：
 
-### Updating Tasks
-Common updates include:
-- Status changes (todo → in progress → review → done)
-- Priority adjustments
-- Due date modifications
-- Adding comments or notes
+1. **获取所有任务**：使用 list_tasks 获取任务列表
+2. **分析每个任务**：
+   - 检查截止日期与当前日期的差距
+   - 识别任务依赖关系
+   - 评估项目整体健康度
+3. **生成调整建议**：列出需要调整优先级的任务及理由
+4. **批量更新**：使用 batch_update_tasks 执行优先级调整
 
-### Batch Operations
-You can perform actions on multiple tasks:
-- Update status for multiple tasks
-- Reassign tasks
-- Apply tags to multiple tasks
+## 输出格式：
 
-## Best Practices
+### 建议升级为 Critical
+| 任务 | 当前优先级 | 建议优先级 | 理由 |
+|------|-----------|-----------|------|
+| XXX | high → critical | 明天到期 |
 
-1. **Keep tasks small**: Break large work into manageable pieces
-2. **Write clear titles**: Use action verbs (e.g., "Implement", "Fix", "Update")
-3. **Set realistic due dates**: Account for dependencies and blockers
-4. **Review regularly**: Check overdue tasks and adjust priorities
-5. **Use tags consistently**: Create a tagging convention and stick to it
+### 建议升级为 High
+| 任务 | 当前优先级 | 建议优先级 | 理由 |
+|------|-----------|-----------|------|
+| XXX | medium → high | 阻塞后续任务 |
 
-## Example Workflow
+### 建议降级
+| 任务 | 当前优先级 | 建议优先级 | 理由 |
+|------|-----------|-----------|------|
+| XXX | high → medium | 可延后处理 |
 
-**Morning Routine**:
-1. Review overdue tasks
-2. Check what's in progress
-3. Prioritize today's work
-4. Update task statuses
+### 保持不变（优先级合理）
+- 列出优先级设置合理的任务
 
-**Weekly Review**:
-1. Review completed tasks
-2. Assess progress toward milestones
-3. Reprioritize upcoming work
-4. Identify blockers
-
-What would you like to work on? You can:
-- View tasks by status
-- Create new tasks
-- Update existing tasks
-- Search for specific tasks
-- Get an overview of task distribution`,
+请给出分析结果，并在用户确认后执行批量更新。`,
         },
       },
     ],
@@ -212,102 +213,82 @@ What would you like to work on? You can:
 }
 
 /**
- * Roadmap overview prompt - shows comprehensive roadmap overview
+ * 智能补充任务细节
+ * 根据任务标题和上下文自动补充描述、验收标准等
  */
-export function getRoadmapOverviewPrompt(): GetPromptResult {
+export function getEnhanceTaskDetailsPrompt(taskId: string): GetPromptResult {
   return {
-    description: 'Roadmap Overview Assistant',
+    description: '任务细节完善助手',
     messages: [
       {
         role: 'user',
         content: {
           type: 'text',
-          text: `Welcome to your Roadmap Overview!
+          text: `请帮我完善任务 ${taskId} 的细节。
 
-I'll help you get a comprehensive view of all your projects and their progress. Here's what we can explore:
+## 完善内容：
 
-## Dashboard Overview
+### 1. 详细描述
+- 任务的具体内容和背景
+- 为什么要做这个任务
+- 预期的业务价值或技术价值
 
-### Project Summary
-- Total number of projects
-- Projects by status (active, completed, archived)
-- Projects by type (roadmap, skill-tree, kanban)
-- Recently updated projects
+### 2. 验收标准（Definition of Done）
+列出明确的完成标准，例如：
+- [ ] 功能实现并本地测试通过
+- [ ] 代码通过Code Review
+- [ ] 相关文档已更新
+- [ ] 单元测试覆盖率>80%
 
-### Task Overview
-- Total tasks across all projects
-- Tasks by status (todo, in progress, review, done)
-- Overdue tasks requiring attention
-- Tasks by priority level
+### 3. 技术/实现细节
+- 涉及的技术栈或模块
+- 可能需要修改的文件
+- 潜在的挑战或注意事项
 
-### Progress Metrics
-- Overall completion percentage
-- Milestones completed vs. total
-- Average tasks per project
-- Upcoming deadlines
+### 4. 相关资源
+- 相关文档链接
+- 参考实现或示例代码
+- 需要咨询的人员
 
-## Project Health Indicators
+### 5. 子任务建议（如果需要）
+如果任务较复杂，建议拆分为子任务：
+- 子任务1：...
+- 子任务2：...
+- 子任务3：...
 
-### Green (Healthy)
-- On track with timeline
-- No overdue critical tasks
-- Regular progress being made
+## 请执行以下步骤：
 
-### Yellow (Attention Needed)
-- Some tasks overdue but not critical
-- Approaching deadline
-- Tasks stuck in review
+1. **获取任务信息**：使用 get_task 查看当前任务详情
+2. **获取项目上下文**：使用 get_project 了解项目背景
+3. **分析任务类型**：
+   - 如果是开发任务：补充技术细节、代码位置
+   - 如果是设计任务：补充设计规范、评审标准
+   - 如果是文档任务：补充文档结构、参考资料
+   - 如果是测试任务：补充测试场景、覆盖范围
+4. **生成完善内容**：使用 update_task 更新任务描述
 
-### Red (Requires Action)
-- Critical tasks overdue
-- Missed milestones
-- No recent progress
+## 更新后任务应包含：
 
-## Navigation Guide
+\`\`\`
+## 背景
+[任务背景和目的]
 
-### Viewing Projects
-- List all projects with key metrics
-- Filter by status or type
-- Sort by various criteria (updated, created, name)
+## 验收标准
+- [ ] [标准1]
+- [ ] [标准2]
+- [ ] [标准3]
 
-### Drilling Down
-- View specific project details
-- See all tasks for a project
-- Check milestone progress
-- Review tag usage
+## 技术细节
+- 涉及模块：[模块名]
+- 关键文件：[文件路径]
+- 注意事项：[重要提醒]
 
-### Taking Action
-- Identify projects needing attention
-- Find overdue tasks
-- Review completed work
-- Plan upcoming work
+## 相关资源
+- 文档：[链接]
+- 参考：[链接]
+\`\`\`
 
-## Example Queries
-
-**"Show me all active projects"**
-Lists projects with status = active, sorted by most recently updated
-
-**"What tasks are overdue?"**
-Shows all tasks where due date < today and status != done
-
-**"Which projects are at risk?"**
-Identifies projects with overdue critical/high priority tasks
-
-**"Show my progress this week"**
-Displays tasks completed in the last 7 days
-
-## Quick Actions
-
-1. **Review Overdue Items**: Check what needs immediate attention
-2. **Celebrate Wins**: Review recently completed tasks
-3. **Plan Ahead**: Look at upcoming milestones and deadlines
-4. **Clean Up**: Archive completed projects
-
-What would you like to see first? I can show you:
-- A summary of all projects
-- Overdue tasks across all projects
-- Progress statistics
-- Specific project details`,
+请获取任务信息后，给出详细的完善建议。`,
         },
       },
     ],
@@ -315,130 +296,66 @@ What would you like to see first? I can show you:
 }
 
 /**
- * Milestone review prompt - helps review and evaluate milestones
+ * 快速捕捉想法
+ * 自动分类、建议优先级、推荐项目
  */
-export function getMilestoneReviewPrompt(projectId?: string): GetPromptResult {
-  const projectContext = projectId 
-    ? `Reviewing milestones for project: ${projectId}` 
-    : 'Reviewing milestones across all projects';
+export function getQuickCapturePrompt(idea: string, projectId?: string): GetPromptResult {
+  const projectContext = projectId
+    ? `添加到项目 ${projectId}`
+    : '自动选择最合适的项目';
 
   return {
-    description: 'Milestone Review Assistant',
+    description: '快速捕捉助手',
     messages: [
       {
         role: 'user',
         content: {
           type: 'text',
-          text: `${projectContext}
+          text: `我要快速捕捉一个想法/任务："${idea}"
 
-I'll help you review and evaluate your project milestones. Milestones are key checkpoints that help track significant progress.
+${projectContext}
 
-## Milestone Review Framework
+## 请帮我完成以下步骤：
 
-### What is a Milestone?
-A milestone represents a significant achievement or checkpoint in your project:
-- Major deliverable completion
-- Phase transition
-- Key decision point
-- External deadline
+### 1. 任务信息提取
+从描述中提取：
+- **任务标题**：简洁明确的标题（动词开头）
+- **任务描述**：补充上下文和细节
+- **任务类型**：bug / feature / refactor / docs / chore
+- **预估优先级**：critical / high / medium / low（基于描述判断紧急程度）
 
-### Milestone Status Types
-- **Not Started**: Target date in future, no work completed
-- **In Progress**: Work ongoing toward milestone
-- **At Risk**: May not meet target date
-- **Completed**: Achieved and marked complete
-- **Missed**: Target date passed without completion
+### 2. 项目推荐（如果未指定项目）
+如果用户没有指定项目，请：
+- 列出所有活跃项目
+- 分析任务内容与哪个项目最相关
+- 推荐最合适的项目
 
-## Review Checklist
+### 3. 标签建议
+建议相关的标签：
+- 类型标签：bug, feature, refactor, docs
+- 优先级标签：urgent, important
+- 领域标签：frontend, backend, design, testing（如适用）
 
-### For Each Milestone, Ask:
+### 4. 生成任务
+使用 create_task 创建任务
 
-1. **Relevance**
-   - Is this milestone still relevant to project goals?
-   - Does it represent meaningful progress?
-   - Are the success criteria clear?
+## 示例：
 
-2. **Timeline**
-   - Is the target date realistic?
-   - Are there dependencies blocking progress?
-   - Do we need to adjust the date?
+**输入**："用户反馈登录页面在手机上显示不对"
 
-3. **Progress**
-   - What percentage complete is this milestone?
-   - Which tasks contribute to this milestone?
-   - Are there blockers or risks?
+**输出**：
+- 标题：修复登录页面移动端适配问题
+- 描述：用户反馈登录页面在移动设备上显示异常，需要检查响应式布局。
+- 类型：Bug
+- 优先级：High（影响用户体验）
+- 建议标签：bug, frontend, mobile
+- 推荐项目：[如果有web项目则推荐]
 
-4. **Completion Criteria**
-   - What defines "complete" for this milestone?
-   - Are there acceptance criteria?
-   - Who needs to sign off?
+## 当前想法分析：
 
-## Milestone Management Actions
+想法："${idea}"
 
-### Creating Milestones
-Best practices for new milestones:
-- Use clear, descriptive names
-- Set realistic target dates
-- Define completion criteria
-- Link related tasks
-
-### Updating Milestones
-Common updates during review:
-- Adjust target dates based on progress
-- Update descriptions to reflect scope changes
-- Mark completed when criteria met
-- Archive obsolete milestones
-
-### Tracking Progress
-Ways to monitor milestone health:
-- Percentage of linked tasks complete
-- Time remaining vs. work remaining
-- Risk assessment (low/medium/high)
-- Dependency status
-
-## Example Milestone Review
-
-**Project**: Website Redesign
-**Milestone**: Design Phase Complete
-**Target Date**: March 15, 2024
-
-**Review Questions**:
-- ✓ Relevance: Still critical path item
-- ⚠ Timeline: 5 days remaining, 60% complete
-- Progress: 3 of 5 design tasks done
-- Risks: User research taking longer than expected
-
-**Decision**: Extend target date by 3 days, add resources to user research
-
-## Review Schedule Recommendations
-
-### Weekly
-- Quick check of upcoming milestones (next 2 weeks)
-- Identify any at-risk items
-
-### Monthly
-- Full review of all active milestones
-- Adjust timelines as needed
-- Celebrate completed milestones
-
-### Quarterly
-- Strategic review of milestone alignment
-- Archive completed project milestones
-- Plan next quarter's milestones
-
-## Metrics to Track
-
-- **Milestone Completion Rate**: % of milestones completed on time
-- **Average Delay**: How often and by how much dates slip
-- **Scope Changes**: Number of milestones added/removed
-- **Predictability**: Variance between planned and actual dates
-
-What would you like to do?
-- Review milestones for a specific project
-- Identify at-risk milestones
-- Plan new milestones
-- Analyze milestone performance
-- Update existing milestones`,
+请分析并生成任务建议。用户确认后，执行 create_task 创建任务。`,
         },
       },
     ],
@@ -446,25 +363,25 @@ What would you like to do?
 }
 
 /**
- * Get prompt by name
+ * 根据名称获取Prompt
  */
 export function getPromptByName(name: string, args?: Record<string, string>): GetPromptResult | null {
   switch (name) {
-    case 'projectPlanningPrompt':
-      return getProjectPlanningPrompt(args?.projectType);
-    case 'taskManagementPrompt':
-      return getTaskManagementPrompt(args?.projectId);
-    case 'roadmapOverviewPrompt':
-      return getRoadmapOverviewPrompt();
-    case 'milestoneReviewPrompt':
-      return getMilestoneReviewPrompt(args?.projectId);
+    case 'recommendNextTasks':
+      return getRecommendNextTasksPrompt(args?.projectId, args?.limit);
+    case 'autoPrioritize':
+      return getAutoPrioritizePrompt(args?.projectId);
+    case 'enhanceTaskDetails':
+      return getEnhanceTaskDetailsPrompt(args?.taskId || '');
+    case 'quickCapture':
+      return getQuickCapturePrompt(args?.idea || '', args?.projectId);
     default:
       return null;
   }
 }
 
 /**
- * Get all available prompts
+ * 获取所有可用的Prompts
  */
 export function getAllPrompts(): Prompt[] {
   return projectPrompts;

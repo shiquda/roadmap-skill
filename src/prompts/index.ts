@@ -1,9 +1,9 @@
 export {
   projectPrompts,
-  getProjectPlanningPrompt,
-  getTaskManagementPrompt,
-  getRoadmapOverviewPrompt,
-  getMilestoneReviewPrompt,
+  getRecommendNextTasksPrompt,
+  getAutoPrioritizePrompt,
+  getEnhanceTaskDetailsPrompt,
+  getQuickCapturePrompt,
   getPromptByName,
   getAllPrompts,
 } from './project-prompts.js';
