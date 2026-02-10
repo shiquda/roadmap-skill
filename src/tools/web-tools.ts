@@ -33,15 +33,20 @@ export const openWebInterfaceTool = {
     }
 
     const port = args.port || 7860;
-    activeServer = createServer(port);
     const url = `http://localhost:${port}`;
 
-    void openBrowser(url);
+    try {
+      activeServer = await createServer(port);
+      await openBrowser(url);
 
-    return {
-      message: 'Web interface started successfully and opened in browser',
-      url: url
-    };
+      return {
+        message: 'Web interface started successfully and opened in browser',
+        url: url
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to start web interface: ${errorMessage}`);
+    }
   }
 };
 
