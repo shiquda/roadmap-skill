@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getItem, setItem, STORAGE_KEYS } from './utils/storage.js';
 
 interface Project {
   id: string;
@@ -82,6 +83,38 @@ const App: React.FC = () => {
     startDate: new Date().toISOString().split('T')[0],
     targetDate: '',
   });
+
+  // Load persisted state on mount
+  useEffect(() => {
+    const savedProjectId = getItem<string>(STORAGE_KEYS.SELECTED_PROJECT_ID);
+    if (savedProjectId) {
+      setSelectedProject(savedProjectId);
+    }
+
+    const savedViewPreferences = getItem<{ cardMode: CardMode }>(STORAGE_KEYS.VIEW_PREFERENCES);
+    if (savedViewPreferences?.cardMode) {
+      setCardMode(savedViewPreferences.cardMode);
+    }
+  }, []);
+
+  // Persist selected project when it changes
+  useEffect(() => {
+    if (selectedProject !== null) {
+      setItem(STORAGE_KEYS.SELECTED_PROJECT_ID, selectedProject);
+    } else {
+      // Clear storage when "All Projects" is selected
+      setItem(STORAGE_KEYS.SELECTED_PROJECT_ID, null);
+    }
+  }, [selectedProject]);
+
+  // Persist view preferences when they change (debounced)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setItem(STORAGE_KEYS.VIEW_PREFERENCES, { cardMode });
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [cardMode]);
 
   useEffect(() => {
     fetch('/api/projects')
