@@ -86,6 +86,7 @@ export const listTasksTool = {
     assignee: z.string().optional(),
     dueBefore: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     dueAfter: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    includeCompleted: z.boolean().optional(),
   }),
   async execute(input: {
     projectId?: string;
@@ -95,6 +96,7 @@ export const listTasksTool = {
     assignee?: string;
     dueBefore?: string;
     dueAfter?: string;
+    includeCompleted?: boolean;
   }) {
     try {
       const results = await storage.searchTasks({
@@ -105,6 +107,7 @@ export const listTasksTool = {
         assignee: input.assignee,
         dueBefore: input.dueBefore,
         dueAfter: input.dueAfter,
+        includeCompleted: input.includeCompleted,
       });
 
       return {

@@ -33,7 +33,13 @@ export function createServer(port: number = 7860): Promise<Server> {
 
     app.get('/api/tasks', async (req, res) => {
       try {
-        const filters = req.query;
+        const filters: Record<string, unknown> = { ...req.query };
+
+        // Convert includeCompleted from string to boolean
+        if (filters.includeCompleted !== undefined) {
+          filters.includeCompleted = filters.includeCompleted === 'true';
+        }
+
         const tasks = await storage.searchTasks(filters as any);
         res.json(tasks);
       } catch (error) {

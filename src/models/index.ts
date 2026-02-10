@@ -72,6 +72,7 @@ export interface TaskSearchFilters {
   dueBefore?: string; // ISO 8601 date string
   dueAfter?: string; // ISO 8601 date string
   searchText?: string;
+  includeCompleted?: boolean; // Whether to include completed (done) tasks, default: false
 }
 
 // Input types for creating/updating entities

@@ -231,6 +231,11 @@ export class ProjectStorage {
             continue;
           }
 
+          // Filter completed tasks (done status) when includeCompleted is false
+          if (filters.includeCompleted === false && task.status === 'done') {
+            continue;
+          }
+
           results.push({ task, project: data.project });
         }
       } catch {
