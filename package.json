@@ -59,7 +59,8 @@
     "node": ">=18.0.0"
   },
   "bin": {
-    "roadmap-skill": "./dist/index.js"
+    "roadmap-skill": "./dist/index.js",
+    "roadmap-skill-web": "./dist/web/server.js"
   },
   "files": [
     "dist/",
