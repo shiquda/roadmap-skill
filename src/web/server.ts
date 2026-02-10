@@ -4,7 +4,7 @@ import type { Server } from 'http';
 import { storage } from '../storage/index.js';
 
 export function createServer(port: number = 7860): Promise<Server> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const app = express();
 
     app.use(express.json());
@@ -183,9 +183,20 @@ export function createServer(port: number = 7860): Promise<Server> {
       res.sendFile(path.join(distPath, 'index.html'));
     });
 
-    const server = app.listen(port, 'localhost', () => {
+    const server = app.listen(port, 'localhost');
+
+    server.once('listening', () => {
       console.log(`Web interface server running at http://localhost:${port}`);
       resolve(server);
+    });
+
+    server.once('error', (error: NodeJS.ErrnoException) => {
+      if (error.code === 'EADDRINUSE') {
+        reject(new Error(`Port ${port} is already in use`));
+        return;
+      }
+
+      reject(error);
     });
   });
 }
