@@ -39,15 +39,162 @@ docs: update README with installation instructions
 refactor(storage): simplify task update logic
 ```
 
-## Code Style
+## Build & Test Commands
 
-- Use TypeScript for all new code
-- Follow existing code patterns in the codebase
-- Run `npm run typecheck` before committing
-- Run `npm run test:unit` before committing
+```bash
+# Development
+npm run dev              # Start development mode with watch
+
+# Building
+npm run build            # Full build (Node + Web)
+npm run build:web        # Build only web frontend
+
+# Type checking
+npm run typecheck        # Run TypeScript type checking without emitting
+
+# Testing
+npm run test             # Run tests in watch mode
+npm run test:unit        # Run unit tests once
+npm run test:integration # Run integration tests once
+
+# Run a single test file
+npx vitest run tests/unit/storage.test.ts
+
+# Run tests matching a pattern
+npx vitest run --reporter=verbose --testNamePattern="createProject"
+```
+
+## Code Style Guidelines
+
+### TypeScript
+
+- **Target**: ES2022 with NodeNext module resolution
+- **Strict mode**: Enabled - all strict TypeScript options must pass
+- **Unused code**: Not allowed (noUnusedLocals, noUnusedParameters)
+- **Implicit returns**: Not allowed (noImplicitReturns)
+
+### Imports & Modules
+
+- Use ES modules (`"type": "module"` in package.json)
+- Include `.js` extension in imports: `import { foo } from './bar.js'`
+- Prefer named imports over default imports
+- Group imports: built-ins → external → internal (separated by blank line)
+
+Example:
+```typescript
+import { readFile } from 'fs/promises';
+import { join } from 'path';
+
+import { z } from 'zod';
+
+import { Project } from '../models/index.js';
+import { readJsonFile } from '../utils/file-helpers.js';
+```
+
+### Naming Conventions
+
+- **Files**: kebab-case (e.g., `file-helpers.ts`, `project-tools.ts`)
+- **Classes**: PascalCase (e.g., `ProjectStorage`, `TaskManager`)
+- **Interfaces/Types**: PascalCase (e.g., `ProjectData`, `TaskStatus`)
+- **Functions/Variables**: camelCase (e.g., `createProject`, `getFilePath`)
+- **Constants**: UPPER_SNAKE_CASE for true constants only
+- **Private class members**: Use `private` modifier (not `#` prefix)
+
+### Types
+
+- Always define explicit return types for public functions
+- Use `interface` for object shapes that may be extended
+- Use `type` for unions, intersections, and complex types
+- Prefer `null` over `undefined` for optional values
+- All dates are stored as ISO 8601 strings
+
+Example:
+```typescript
+export interface Project {
+  id: string;
+  name: string;
+  dueDate: string | null; // ISO 8601 date string or null
+}
+
+export type ProjectStatus = 'active' | 'completed' | 'archived';
+```
+
+### Error Handling
+
+- Use explicit error checking instead of try-catch when possible
+- Always check for `ENOENT` errors when reading files
+- Log errors to `console.error` with descriptive messages
+- Exit process with code 1 on fatal errors
+
+Example:
+```typescript
+async readProject(projectId: string): Promise<ProjectData | null> {
+  try {
+    const filePath = this.getFilePath(projectId);
+    return await readJsonFile<ProjectData>(filePath);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('ENOENT')) {
+      return null;
+    }
+    throw error;
+  }
+}
+```
+
+### Comments & Documentation
+
+- Use JSDoc for public methods and functions
+- Keep comments concise and up-to-date
+- Explain "why" not "what" (code should be self-documenting)
+
+Example:
+```typescript
+/**
+ * Create a new project with generated ID and timestamps
+ * @param input - Project creation data (without ID/timestamps)
+ * @returns The complete project data including generated fields
+ */
+async createProject(input: CreateProjectInput): Promise<ProjectData> {
+  // Implementation...
+}
+```
+
+### Testing
+
+- Use Vitest with globals enabled
+- Test file pattern: `tests/**/*.{test,spec}.{js,ts}`
+- Use `describe`/`it` blocks for organizing tests
+- Use `beforeEach`/`afterEach` for setup/teardown
+- Tests should be independent and not rely on execution order
+
+Example:
+```typescript
+describe('ProjectStorage', () => {
+  let storage: ProjectStorage;
+
+  beforeEach(() => {
+    storage = new ProjectStorage();
+  });
+
+  describe('createProject', () => {
+    it('should create a project with valid input', async () => {
+      // Test code...
+    });
+  });
+});
+```
 
 ## Dependencies
 
 - **Always use npm official registry** (`https://registry.npmjs.org/`)
 - Do not use Taobao mirror or other third-party registries
 - The `.npmrc` file enforces this - do not override it
+- Node.js version requirement: `>=20.0.0`
+
+## Pre-commit Checklist
+
+Before committing, ensure:
+1. `npm run typecheck` passes
+2. `npm run test:unit` passes
+3. Code follows existing patterns in the codebase
+4. Commit message follows Conventional Commits format (in English)
