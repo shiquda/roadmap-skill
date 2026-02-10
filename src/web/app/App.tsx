@@ -65,14 +65,16 @@ const App: React.FC = () => {
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState('');
-  const [addingTaskColumn, setAddingTaskColumn] = useState<string | null>(null);
   const [taskFormError, setTaskFormError] = useState('');
   const [newTaskForm, setNewTaskForm] = useState({
     title: '',
     description: '',
+    priority: 'medium' as 'critical' | 'high' | 'medium' | 'low',
     dueDate: '',
     showDueDate: false,
   });
+  const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
+  const [createTaskStatus, setCreateTaskStatus] = useState<TaskStatus>('todo');
   const [newProject, setNewProject] = useState({
     name: '',
     description: '',
@@ -232,7 +234,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleCreateTask = async (status: string) => {
+  const handleCreateTask = async () => {
     const title = newTaskForm.title.trim();
     if (!title) {
       setTaskFormError('Title is required.');
@@ -261,8 +263,8 @@ const App: React.FC = () => {
           projectId: targetProjectId,
           title,
           description: newTaskForm.description,
-          status: normalizeStatus(status),
-          priority: 'medium',
+          status: normalizeStatus(createTaskStatus),
+          priority: newTaskForm.priority,
           dueDate: newTaskForm.dueDate || undefined,
         }),
       });
@@ -280,11 +282,12 @@ const App: React.FC = () => {
           setNewTaskForm({
             title: '',
             description: '',
+            priority: 'medium',
             dueDate: '',
             showDueDate: false,
           });
           setTaskFormError('');
-          setAddingTaskColumn(null);
+          setIsCreateTaskModalOpen(false);
         }
       }
     } catch (error) {
@@ -345,17 +348,27 @@ const App: React.FC = () => {
   };
 
   const getTasksByStatus = (status: TaskStatus) => 
-    filteredTasks.filter(({ task }) => normalizeStatus(task.status) === status);
+    filteredTasks
+      .filter(({ task }) => normalizeStatus(task.status) === status)
+      .sort((a, b) => {
+        const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+        return priorityOrder[a.task.priority as keyof typeof priorityOrder] - priorityOrder[b.task.priority as keyof typeof priorityOrder];
+      });
 
   const renderTaskCard = ({ task, project }: { task: Task; project: Project }) => {
     const priority = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.medium;
+    const isDragging = draggedTask === task.id;
 
     return (
       <div
         key={task.id}
         draggable
         onDragStart={(e) => handleDragStart(e, task.id)}
-        className={`bg-white rounded-lg border border-slate-200 shadow-sm hover:shadow-md hover:border-slate-300 cursor-move transition-all group flex flex-col ${
+        className={`bg-white rounded-lg border border-slate-200 cursor-move transition-all duration-200 ease-out group flex flex-col ${
+          isDragging
+            ? 'shadow-xl scale-105 border-blue-400 rotate-1'
+            : 'shadow-sm hover:shadow-md hover:border-slate-300'
+        } ${
           cardMode === 'compact' ? 'p-4' : 'p-5'
         }`}
       >
@@ -570,9 +583,10 @@ const App: React.FC = () => {
                     </div>
                     <button
                       onClick={() => {
-                        setAddingTaskColumn(column);
+                        setCreateTaskStatus(column);
                         setTaskFormError('');
-                        setNewTaskForm({ title: '', description: '', dueDate: '', showDueDate: false });
+                        setNewTaskForm({ title: '', description: '', priority: 'medium', dueDate: '', showDueDate: false });
+                        setIsCreateTaskModalOpen(true);
                       }}
                       className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded transition-all"
                     >
@@ -580,66 +594,18 @@ const App: React.FC = () => {
                     </button>
                   </div>
 
-                  {addingTaskColumn === column && (
-                    <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm mb-3">
-                      <input
-                        type="text"
-                        value={newTaskForm.title}
-                        onChange={(e) => setNewTaskForm(prev => ({ ...prev, title: e.target.value }))}
-                        placeholder="Task title *"
-                        className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        autoFocus
-                      />
-                      <textarea
-                        value={newTaskForm.description}
-                        onChange={(e) => setNewTaskForm(prev => ({ ...prev, description: e.target.value }))}
-                        placeholder="Description (optional)"
-                        rows={2}
-                        className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                      />
-                      {newTaskForm.showDueDate && (
-                        <input
-                          type="date"
-                          value={newTaskForm.dueDate}
-                          onChange={(e) => setNewTaskForm(prev => ({ ...prev, dueDate: e.target.value }))}
-                          className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                      )}
-                      <div className="flex items-center justify-between">
-                        <button
-                          onClick={() => setNewTaskForm(prev => ({ ...prev, showDueDate: !prev.showDueDate }))}
-                          className="text-xs text-slate-500 hover:text-slate-700"
-                        >
-                          {newTaskForm.showDueDate ? 'Hide due date' : 'Due date'}
-                        </button>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => {
-                              setAddingTaskColumn(null);
-                              setNewTaskForm({ title: '', description: '', dueDate: '', showDueDate: false });
-                              setTaskFormError('');
-                            }}
-                            className="px-2 py-1 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            onClick={() => handleCreateTask(column)}
-                            disabled={!newTaskForm.title.trim()}
-                            className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
-                          >
-                            Add
-                          </button>
-                        </div>
-                      </div>
-                      {taskFormError && (
-                        <p className="text-xs text-red-600 mt-2">{taskFormError}</p>
-                      )}
-                    </div>
-                  )}
 
-                  <div className="space-y-3">
-                    {columnTasks.map(renderTaskCard)}
+
+                  <div className="space-y-3 transition-all duration-300">
+                    {columnTasks.map((taskItem, index) => (
+                      <div
+                        key={taskItem.task.id}
+                        className="animate-fadeIn"
+                        style={{ animationDelay: `${index * 50}ms` }}
+                      >
+                        {renderTaskCard(taskItem)}
+                      </div>
+                    ))}
                   </div>
                 </div>
               );
@@ -649,8 +615,8 @@ const App: React.FC = () => {
       </div>
 
       {isEditModalOpen && editingTask && (
-        <div 
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fadeIn"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setIsEditModalOpen(false);
@@ -658,7 +624,7 @@ const App: React.FC = () => {
             }
           }}
         >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-slideUp">
             <div className="p-6 border-b border-slate-100">
               <h2 className="text-xl font-semibold text-slate-900">Edit Task</h2>
             </div>
@@ -742,16 +708,101 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {isCreateTaskModalOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fadeIn"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsCreateTaskModalOpen(false);
+            }
+          }}
+        >
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg animate-slideUp">
+            <div className="p-6 border-b border-slate-100">
+              <h2 className="text-xl font-semibold text-slate-900">Create New Task</h2>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Title *</label>
+                <input
+                  type="text"
+                  value={newTaskForm.title}
+                  onChange={(e) => setNewTaskForm({ ...newTaskForm, title: e.target.value })}
+                  placeholder="Enter task title"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                <textarea
+                  value={newTaskForm.description}
+                  onChange={(e) => setNewTaskForm({ ...newTaskForm, description: e.target.value })}
+                  placeholder="Enter task description (optional)"
+                  rows={3}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Priority</label>
+                  <select
+                    value={newTaskForm.priority}
+                    onChange={(e) => setNewTaskForm({ ...newTaskForm, priority: e.target.value as 'critical' | 'high' | 'medium' | 'low' })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
+                  <input
+                    type="date"
+                    value={newTaskForm.dueDate}
+                    onChange={(e) => setNewTaskForm({ ...newTaskForm, dueDate: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+              {taskFormError && (
+                <p className="text-sm text-red-600">{taskFormError}</p>
+              )}
+            </div>
+            <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setIsCreateTaskModalOpen(false);
+                  setTaskFormError('');
+                }}
+                className="px-4 py-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateTask}
+                disabled={!newTaskForm.title.trim()}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors font-medium"
+              >
+                Create Task
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isCreateProjectOpen && (
         <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fadeIn"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setIsCreateProjectOpen(false);
             }
           }}
         >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg animate-slideUp">
             <div className="p-6 border-b border-slate-100">
               <h2 className="text-xl font-semibold text-slate-900">Create New Project</h2>
             </div>

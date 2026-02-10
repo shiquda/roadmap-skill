@@ -126,7 +126,15 @@ export function getRecommendNextTasksPrompt(projectId?: string, limit?: string):
    - 原因：[为什么应该接下来做]
    - 建议行动：[具体做什么]
 
-请使用 list_tasks 工具获取任务数据，然后给出智能推荐。`,
+ 请使用 list_tasks 工具获取任务数据，然后给出智能推荐。
+
+## Important Reminder
+When you start working on recommended tasks, please:
+1. Use update_task to set task status to in-progress
+2. After completing the task, use update_task to set status to done
+3. If blocked or have issues, document in description and update status to review
+
+Keep task status synchronized with actual progress!`,
         },
       },
     ],
@@ -338,6 +346,9 @@ ${projectContext}
 
 ### 4. 生成任务
 使用 create_task 创建任务
+
+### 5. Status Recommendation
+After creating the task, if you start working on it immediately, consider setting the status to in-progress. Use update_task to keep progress updated during work, and mark as done when completed.
 
 ## 示例：
 

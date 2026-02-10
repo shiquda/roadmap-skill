@@ -66,7 +66,7 @@ export function createServer(): Server {
 	const server = new Server(
 		{
 			name: "roadmap-skill",
-			version: "0.1.4",
+			version: "0.2.0",
 		},
 		{
 			capabilities: {
