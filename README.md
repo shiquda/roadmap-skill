@@ -22,7 +22,7 @@
 
 ---
 
-## ✨ Why Roadmap Skill?
+## Why Roadmap Skill?
 
 **Tired of juggling multiple project management tools?** Roadmap Skill brings your tasks directly into your AI workflow while offering a beautiful visual interface when you need it.
 
@@ -38,20 +38,29 @@
 
 ## 🚀 Quick Start
 
-### Option 1: Standalone Web App (Easiest)
+### Option 1: Standalone Web App
 
 ```bash
 npx roadmap-skill-web
 ```
 
-Then open http://localhost:7860 in your browser.
+Then open <http://localhost:7860> in your browser.
 
 ### Option 2: Integrate with AI Assistants
 
 Add to your AI assistant's MCP configuration:
 
-<details open>
-<summary><b>Claude Desktop (Recommended)</b></summary>
+<details>
+<summary><b>Claude Code</b></summary>
+
+```bash
+claude mcp add roadmap npx -y roadmap-skill
+```
+
+</details>
+
+<details>
+<summary><b>Claude Desktop</b></summary>
 
 ```json
 {
@@ -63,6 +72,30 @@ Add to your AI assistant's MCP configuration:
   }
 }
 ```
+
+</details>
+
+<details>
+<summary><b>Copilot</b></summary>
+
+```bash
+/mcp add
+```
+
+Or edit `~/.copilot/mcp-config.json`:
+
+```json
+{
+  "mcpServers": {
+    "roadmap": {
+      "type": "local",
+      "command": "npx",
+      "args": ["-y", "roadmap-skill"]
+    }
+  }
+}
+```
+
 </details>
 
 <details>
@@ -78,6 +111,85 @@ Add to your AI assistant's MCP configuration:
   }
 }
 ```
+
+</details>
+
+<details>
+<summary><b>JetBrains (via Cline)</b></summary>
+
+Install Cline plugin, then add to `cline_mcp_settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "roadmap": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "roadmap-skill"]
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><b>Roo Code</b></summary>
+
+```json
+{
+  "mcpServers": {
+    "roadmap": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "roadmap-skill"]
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><b>Opencode</b></summary>
+
+Edit `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "roadmap": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "roadmap-skill"
+      ],
+      "enabled": true
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><b>Trae</b></summary>
+
+Go to `Settings` -> `MCP` -> `Add new MCP Server`:
+
+```json
+{
+  "mcpServers": {
+    "roadmap": {
+      "command": "npx",
+      "args": ["-y", "roadmap-skill"]
+    }
+  }
+}
+```
+
 </details>
 
 <details>
@@ -95,6 +207,25 @@ Add to your AI assistant's MCP configuration:
   }
 }
 ```
+
+</details>
+
+<details>
+<summary><b>Windsurf</b></summary>
+
+Follow Windsurf MCP documentation and use:
+
+```json
+{
+  "mcpServers": {
+    "roadmap": {
+      "command": "npx",
+      "args": ["-y", "roadmap-skill"]
+    }
+  }
+}
+```
+
 </details>
 
 <details>
@@ -112,9 +243,10 @@ Add to your AI assistant's MCP configuration:
   }
 }
 ```
+
 </details>
 
-Then ask your AI:
+Then ask your AI (e.g.):
 > "Create a project called 'Website Redesign' with tasks for homepage, about page, and contact form"
 
 ---
@@ -122,18 +254,21 @@ Then ask your AI:
 ## 💡 What You Can Do
 
 ### Plan Projects Visually
+
 - See all your tasks organized in Kanban columns
 - Switch between compact and detailed card views
 - Filter by status, project, or search keywords
 - Drag tasks to update their status instantly
 
 ### Work with AI
+
 - "Show me all high priority tasks due this week"
 - "Move the authentication task to in-progress"
 - "Create a new project for mobile app with 5 initial tasks"
 - "What's my overall progress across all projects?"
 
 ### Collaborate & Track
+
 - Assign tasks to team members
 - Set due dates and priorities
 - Add tags to organize related work
@@ -144,14 +279,17 @@ Then ask your AI:
 ## 📦 Installation
 
 ### Requirements
+
 - Node.js 18+ (20+ recommended)
 
 ### One-Line Install
+
 ```bash
 npm install -g roadmap-skill
 ```
 
 ### Or Use Without Installing
+
 ```bash
 npx roadmap-skill-web      # Just the web interface
 npx roadmap-skill          # Full MCP server
@@ -173,8 +311,8 @@ npx roadmap-skill          # Full MCP server
 
 ## 🔧 Supported Platforms
 
-- ✅ **Claude Desktop** — Full MCP integration
 - ✅ **Claude Code** — Command-line AI assistant
+- ✅ **Claude Desktop** — Full MCP integration
 - ✅ **Cursor** — AI-powered IDE
 - ✅ **VS Code** — Via Cline or Roo Code extensions
 - ✅ **Any MCP Client** — Standard MCP protocol support

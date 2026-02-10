@@ -13,7 +13,10 @@ export default defineConfig([
     splitting: false,
     bundle: true,
     minify: false,
-    shims: true
+    shims: true,
+    banner: {
+      js: '#!/usr/bin/env node',
+    }
   },
   {
     entry: ['src/web/server.ts'],
@@ -28,6 +31,9 @@ export default defineConfig([
     bundle: true,
     minify: false,
     shims: true,
-    external: ['express']
+    external: ['express'],
+    banner: {
+      js: '#!/usr/bin/env node',
+    }
   }
 ]);
