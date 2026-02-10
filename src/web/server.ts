@@ -1,10 +1,6 @@
 import express from 'express';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
 import { storage } from '../storage/index.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 export function createServer(port: number = 7860) {
   const app = express();
@@ -168,7 +164,7 @@ export function createServer(port: number = 7860) {
     }
   });
 
-  const distPath = path.join(__dirname, 'app');
+  const distPath = path.join(process.cwd(), 'dist', 'web', 'app');
   app.use(express.static(distPath));
 
   app.get('*', (req, res) => {

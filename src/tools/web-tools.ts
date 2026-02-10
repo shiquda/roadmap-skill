@@ -1,7 +1,16 @@
 import { createServer } from '../web/server.js';
+import open from 'open';
 import type { Server } from 'http';
 
 let activeServer: Server | null = null;
+
+async function openBrowser(url: string): Promise<void> {
+  try {
+    await open(url);
+  } catch (error) {
+    console.error('Failed to open browser:', error);
+  }
+}
 
 export const openWebInterfaceTool = {
   name: 'open_web_interface',
@@ -25,10 +34,13 @@ export const openWebInterfaceTool = {
 
     const port = args.port || 7860;
     activeServer = createServer(port);
-    
+    const url = `http://localhost:${port}`;
+
+    void openBrowser(url);
+
     return {
-      message: 'Web interface started successfully',
-      url: `http://localhost:${port}`
+      message: 'Web interface started successfully and opened in browser',
+      url: url
     };
   }
 };
@@ -36,6 +48,10 @@ export const openWebInterfaceTool = {
 export const closeWebInterfaceTool = {
   name: 'close_web_interface',
   description: 'Close web visualization interface',
+  parameters: {
+    type: 'object',
+    properties: {},
+  },
   async execute() {
     if (!activeServer) {
       return { message: 'Web interface is not running' };

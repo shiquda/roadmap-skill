@@ -1,12 +1,12 @@
 {
   "name": "roadmap-skill",
-  "version": "0.1.1",
+  "version": "0.1.4",
   "description": "A MCP server for project roadmap management with task tracking, tagging, and web visualization",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "npm run build:web && tsup",
+    "build": "tsup && npm run build:web",
     "build:web": "vite build",
     "dev": "tsup --watch",
     "test": "vitest",
@@ -25,23 +25,25 @@
     "task-management",
     "kanban"
   ],
-  "author": "Your Name",
+  "author": "shiquda",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/roadmap-skill.git"
+    "url": "https://github.com/shiquda/roadmap-skill.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/roadmap-skill/issues"
+    "url": "https://github.com/shiquda/roadmap-skill/issues"
   },
-  "homepage": "https://github.com/yourusername/roadmap-skill#readme",
+  "homepage": "https://github.com/shiquda/roadmap-skill#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",
     "express": "^4.18.2",
+    "open": "^11.0.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "uuid": "^9.0.1",
-    "zod": "^3.22.4"
+    "zod": "^3.22.4",
+    "zod-to-json-schema": "^3.25.1"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
