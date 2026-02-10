@@ -1,0 +1,126 @@
+{
+  "name": "Mobile Application",
+  "description": "Cross-platform mobile application project template for iOS/Android using React Native or Flutter",
+  "projectType": "mobile",
+  "tasks": [
+    {
+      "title": "Development Environment Setup",
+      "description": "Install and configure mobile development tools (React Native CLI/Flutter SDK, Android Studio, Xcode), set up emulators/simulators, and configure debugging tools",
+      "priority": "critical",
+      "tags": ["setup", "mobile"],
+      "estimatedHours": 4
+    },
+    {
+      "title": "Project Initialization and Structure",
+      "description": "Initialize mobile project with proper folder structure, configure navigation library, set up state management (Redux/MobX/Provider), and establish coding standards",
+      "priority": "critical",
+      "tags": ["setup", "mobile"],
+      "estimatedHours": 3
+    },
+    {
+      "title": "UI/UX Design and Component Library",
+      "description": "Create mobile-specific design mockups, design responsive layouts for different screen sizes, establish component library, and define app theme and styling system",
+      "priority": "high",
+      "tags": ["design", "ui", "mobile"],
+      "estimatedHours": 10
+    },
+    {
+      "title": "Core Navigation and Routing",
+      "description": "Implement app navigation structure (stack, tab, drawer navigators), deep linking configuration, and navigation state management",
+      "priority": "critical",
+      "tags": ["mobile", "ui"],
+      "estimatedHours": 6
+    },
+    {
+      "title": "Authentication and User Management",
+      "description": "Implement user authentication (email/password, social login, biometric), secure token storage, and user profile management screens",
+      "priority": "critical",
+      "tags": ["mobile", "security", "api"],
+      "estimatedHours": 10
+    },
+    {
+      "title": "API Integration and Data Layer",
+      "description": "Set up HTTP client with interceptors, implement API service layer, handle offline mode and data caching, and configure error handling",
+      "priority": "high",
+      "tags": ["api", "mobile"],
+      "estimatedHours": 8
+    },
+    {
+      "title": "Core Feature Development - Main Screens",
+      "description": "Implement primary app screens and features, integrate with backend APIs, handle loading states and error boundaries",
+      "priority": "high",
+      "tags": ["mobile", "ui"],
+      "estimatedHours": 20
+    },
+    {
+      "title": "Core Feature Development - Secondary Features",
+      "description": "Implement secondary features, settings screens, user preferences, and additional functionality",
+      "priority": "medium",
+      "tags": ["mobile", "ui"],
+      "estimatedHours": 12
+    },
+    {
+      "title": "Native Module Integration",
+      "description": "Integrate native device features (camera, GPS, push notifications, contacts, storage) using native modules or third-party libraries",
+      "priority": "high",
+      "tags": ["mobile", "native"],
+      "estimatedHours": 10
+    },
+    {
+      "title": "Testing - Unit and Widget Tests",
+      "description": "Write unit tests for business logic, widget/component tests, mock external dependencies, and achieve minimum 70% coverage",
+      "priority": "high",
+      "tags": ["testing", "mobile"],
+      "estimatedHours": 8
+    },
+    {
+      "title": "Testing - Integration and E2E Tests",
+      "description": "Implement integration tests for critical user flows, E2E tests using Detox/Appium, and device-specific testing on multiple screen sizes",
+      "priority": "medium",
+      "tags": ["testing", "mobile"],
+      "estimatedHours": 8
+    },
+    {
+      "title": "Performance Optimization",
+      "description": "Optimize app startup time, implement lazy loading, optimize images and assets, reduce bundle size, and memory leak detection",
+      "priority": "medium",
+      "tags": ["performance", "mobile"],
+      "estimatedHours": 6
+    },
+    {
+      "title": "App Store Preparation",
+      "description": "Prepare app store assets (screenshots, icons, descriptions), configure app signing, set up app store listings (App Store Connect, Google Play Console)",
+      "priority": "high",
+      "tags": ["store", "deployment"],
+      "estimatedHours": 6
+    },
+    {
+      "title": "Build and Deployment Pipeline",
+      "description": "Set up CI/CD for automated builds (Fastlane/Codemagic), configure code signing, and automate deployment to TestFlight/Play Console",
+      "priority": "high",
+      "tags": ["deployment", "devops", "store"],
+      "estimatedHours": 8
+    },
+    {
+      "title": "App Store Submission and Review",
+      "description": "Submit app for review, address feedback from app store review team, and prepare for production release",
+      "priority": "critical",
+      "tags": ["store", "deployment"],
+      "estimatedHours": 4
+    }
+  ],
+  "tags": [
+    { "name": "mobile", "color": "#4287f5" },
+    { "name": "ui", "color": "#f5a742" },
+    { "name": "api", "color": "#42f5a7" },
+    { "name": "testing", "color": "#f542a7" },
+    { "name": "store", "color": "#a742f5" },
+    { "name": "setup", "color": "#f54242" },
+    { "name": "design", "color": "#42d4f5" },
+    { "name": "security", "color": "#ff6b6b" },
+    { "name": "native", "color": "#4ecdc4" },
+    { "name": "performance", "color": "#95e1d3" },
+    { "name": "deployment", "color": "#f38181" },
+    { "name": "devops", "color": "#aa96da" }
+  ]
+}

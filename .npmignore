@@ -1,0 +1,33 @@
+# Source code
+src/
+
+# Tests
+tests/
+*.test.ts
+
+# Documentation
+docs/
+
+# Development files
+.sisyphus/
+.vscode/
+.idea/
+*.log
+.env
+.env.local
+
+# Git
+.git/
+.gitignore
+
+# Build tools
+vite.config.ts
+tsconfig.json
+tsup.config.ts
+
+# CI/CD
+.github/
+
+# Misc
+*.md
+!README.md

@@ -1,0 +1,142 @@
+{
+  "name": "AI/ML Project",
+  "description": "Machine learning and AI project template covering data collection, model training, evaluation, and deployment",
+  "projectType": "ai",
+  "tasks": [
+    {
+      "title": "Project Setup and Environment Configuration",
+      "description": "Set up Python virtual environment, install ML libraries (PyTorch/TensorFlow, scikit-learn, pandas, numpy), configure Jupyter notebooks, and set up version control for data/models",
+      "priority": "critical",
+      "tags": ["setup", "ml"],
+      "estimatedHours": 4
+    },
+    {
+      "title": "Problem Definition and Success Metrics",
+      "description": "Define ML problem type (classification/regression/clustering), establish success metrics (accuracy, precision, recall, F1, RMSE), and create baseline performance targets",
+      "priority": "critical",
+      "tags": ["ai", "design"],
+      "estimatedHours": 4
+    },
+    {
+      "title": "Data Collection and Acquisition",
+      "description": "Identify data sources, collect raw data through APIs/web scraping/databases, ensure data licensing compliance, and document data provenance",
+      "priority": "critical",
+      "tags": ["data", "collection"],
+      "estimatedHours": 12
+    },
+    {
+      "title": "Data Exploration and Analysis (EDA)",
+      "description": "Perform exploratory data analysis, visualize data distributions, identify correlations and patterns, detect outliers, and document findings",
+      "priority": "high",
+      "tags": ["data", "analysis"],
+      "estimatedHours": 8
+    },
+    {
+      "title": "Data Cleaning and Preprocessing",
+      "description": "Handle missing values, remove duplicates, fix data inconsistencies, encode categorical variables, normalize/standardize features, and create data validation pipelines",
+      "priority": "critical",
+      "tags": ["data", "preprocessing"],
+      "estimatedHours": 10
+    },
+    {
+      "title": "Feature Engineering",
+      "description": "Create new features from existing data, perform feature selection using statistical methods, apply dimensionality reduction (PCA/t-SNE), and document feature importance",
+      "priority": "high",
+      "tags": ["data", "feature-engineering"],
+      "estimatedHours": 12
+    },
+    {
+      "title": "Data Pipeline and Versioning Setup",
+      "description": "Build automated data pipelines, set up data versioning (DVC), implement data validation checks, and create reproducible data processing workflows",
+      "priority": "high",
+      "tags": ["data", "pipeline", "devops"],
+      "estimatedHours": 8
+    },
+    {
+      "title": "Model Selection and Baseline Training",
+      "description": "Research appropriate algorithms, implement baseline models (simple heuristics, linear models), establish baseline performance, and document model choices",
+      "priority": "critical",
+      "tags": ["model", "training"],
+      "estimatedHours": 8
+    },
+    {
+      "title": "Model Training and Hyperparameter Tuning",
+      "description": "Train multiple model architectures, perform hyperparameter optimization (grid search, random search, Bayesian optimization), implement cross-validation, and track experiments (MLflow/Weights & Biases)",
+      "priority": "critical",
+      "tags": ["model", "training", "optimization"],
+      "estimatedHours": 20
+    },
+    {
+      "title": "Model Evaluation and Validation",
+      "description": "Evaluate models on test set, perform error analysis, check for overfitting/underfitting, validate model fairness and bias, and create evaluation reports",
+      "priority": "critical",
+      "tags": ["model", "evaluation"],
+      "estimatedHours": 8
+    },
+    {
+      "title": "Model Interpretability and Explainability",
+      "description": "Generate feature importance plots, create SHAP/LIME explanations, analyze model decisions, and document model behavior for stakeholders",
+      "priority": "medium",
+      "tags": ["model", "interpretability"],
+      "estimatedHours": 6
+    },
+    {
+      "title": "Model Optimization and Compression",
+      "description": "Optimize model for inference speed, apply quantization/pruning techniques, reduce model size for deployment, and benchmark performance",
+      "priority": "medium",
+      "tags": ["model", "optimization", "performance"],
+      "estimatedHours": 8
+    },
+    {
+      "title": "API Development for Model Serving",
+      "description": "Build REST API for model inference, implement request/response validation, add authentication, create batch prediction endpoints, and handle error cases",
+      "priority": "high",
+      "tags": ["api", "deployment"],
+      "estimatedHours": 10
+    },
+    {
+      "title": "Model Deployment and Containerization",
+      "description": "Containerize model with Docker, set up model serving infrastructure (FastAPI/Flask/TensorFlow Serving), configure auto-scaling, and implement health checks",
+      "priority": "high",
+      "tags": ["deployment", "devops"],
+      "estimatedHours": 10
+    },
+    {
+      "title": "Monitoring and Model Drift Detection",
+      "description": "Set up model performance monitoring, implement data drift detection, create alerting for model degradation, and establish retraining triggers",
+      "priority": "medium",
+      "tags": ["monitoring", "deployment"],
+      "estimatedHours": 6
+    },
+    {
+      "title": "Documentation and Model Cards",
+      "description": "Create comprehensive documentation, write model cards with intended use and limitations, document API usage, and create user guides",
+      "priority": "medium",
+      "tags": ["documentation"],
+      "estimatedHours": 6
+    }
+  ],
+  "tags": [
+    { "name": "ai", "color": "#4287f5" },
+    { "name": "ml", "color": "#f5a742" },
+    { "name": "data", "color": "#42f5a7" },
+    { "name": "model", "color": "#f542a7" },
+    { "name": "api", "color": "#a742f5" },
+    { "name": "setup", "color": "#f54242" },
+    { "name": "design", "color": "#42d4f5" },
+    { "name": "collection", "color": "#ff6b6b" },
+    { "name": "analysis", "color": "#4ecdc4" },
+    { "name": "preprocessing", "color": "#95e1d3" },
+    { "name": "feature-engineering", "color": "#f38181" },
+    { "name": "pipeline", "color": "#aa96da" },
+    { "name": "training", "color": "#fcbad3" },
+    { "name": "optimization", "color": "#a8d8ea" },
+    { "name": "evaluation", "color": "#aa96da" },
+    { "name": "interpretability", "color": "#ffd93d" },
+    { "name": "performance", "color": "#6bcb77" },
+    { "name": "deployment", "color": "#4d96ff" },
+    { "name": "devops", "color": "#ff6b9d" },
+    { "name": "monitoring", "color": "#c9b1ff" },
+    { "name": "documentation", "color": "#95e1d3" }
+  ]
+}

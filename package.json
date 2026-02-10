@@ -1,0 +1,71 @@
+{
+  "name": "roadmap-skill",
+  "version": "0.1.0",
+  "description": "A MCP server for project roadmap management with task tracking, tagging, and web visualization",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "npm run build:web && tsup",
+    "build:web": "vite build",
+    "dev": "tsup --watch",
+    "test": "vitest",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "mcp",
+    "roadmap",
+    "project-management",
+    "ai",
+    "claude",
+    "cursor",
+    "vscode",
+    "task-management",
+    "kanban"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/roadmap-skill.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/roadmap-skill/issues"
+  },
+  "homepage": "https://github.com/yourusername/roadmap-skill#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "express": "^4.18.2",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "uuid": "^9.0.1",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.19.33",
+    "@types/react": "^19.2.13",
+    "@types/react-dom": "^19.2.3",
+    "@types/uuid": "^9.0.7",
+    "@vitejs/plugin-react": "^5.1.3",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3",
+    "vite": "^7.3.1",
+    "vitest": "^1.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "bin": {
+    "roadmap-skill": "./dist/index.js"
+  },
+  "files": [
+    "dist/",
+    "templates/",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ]
+}

@@ -1,0 +1,108 @@
+{
+  "name": "Web Application",
+  "description": "Full-stack web application project template with frontend, backend, database, and deployment phases",
+  "projectType": "web",
+  "tasks": [
+    {
+      "title": "Project Setup and Repository Initialization",
+      "description": "Initialize Git repository, set up project structure, configure linting and formatting tools (ESLint, Prettier), and establish CI/CD pipeline foundation",
+      "priority": "critical",
+      "tags": ["setup", "devops"],
+      "estimatedHours": 4
+    },
+    {
+      "title": "Requirements Analysis and Architecture Design",
+      "description": "Document functional and non-functional requirements, create system architecture diagrams, define API contracts, and establish database schema design",
+      "priority": "critical",
+      "tags": ["design", "architecture"],
+      "estimatedHours": 8
+    },
+    {
+      "title": "UI/UX Design and Prototyping",
+      "description": "Create wireframes, design mockups, establish design system (colors, typography, components), and build interactive prototypes",
+      "priority": "high",
+      "tags": ["design", "frontend", "ui"],
+      "estimatedHours": 12
+    },
+    {
+      "title": "Database Design and Setup",
+      "description": "Design relational schema, set up database server (PostgreSQL/MySQL), create migration scripts, and establish connection pooling",
+      "priority": "critical",
+      "tags": ["database", "backend"],
+      "estimatedHours": 6
+    },
+    {
+      "title": "Backend API Development - Core Features",
+      "description": "Implement RESTful/GraphQL API endpoints, authentication and authorization (JWT/OAuth), request validation, and error handling middleware",
+      "priority": "critical",
+      "tags": ["backend", "api", "security"],
+      "estimatedHours": 16
+    },
+    {
+      "title": "Backend API Development - Business Logic",
+      "description": "Implement domain-specific business logic, service layer, data access layer, and integration with external APIs",
+      "priority": "high",
+      "tags": ["backend", "api"],
+      "estimatedHours": 20
+    },
+    {
+      "title": "Frontend Development - Core Components",
+      "description": "Set up frontend framework (React/Vue/Angular), implement routing, authentication flows, and core UI components",
+      "priority": "high",
+      "tags": ["frontend", "ui"],
+      "estimatedHours": 16
+    },
+    {
+      "title": "Frontend Development - Feature Implementation",
+      "description": "Implement main application features, integrate with backend APIs, state management setup, and form handling",
+      "priority": "high",
+      "tags": ["frontend", "api"],
+      "estimatedHours": 24
+    },
+    {
+      "title": "Testing - Unit and Integration Tests",
+      "description": "Write unit tests for backend services, frontend components, API integration tests, and achieve minimum 80% code coverage",
+      "priority": "high",
+      "tags": ["testing", "backend", "frontend"],
+      "estimatedHours": 12
+    },
+    {
+      "title": "Testing - E2E and Performance Testing",
+      "description": "Implement end-to-end tests (Cypress/Playwright), load testing, and security vulnerability scanning",
+      "priority": "medium",
+      "tags": ["testing", "performance", "security"],
+      "estimatedHours": 8
+    },
+    {
+      "title": "Deployment and DevOps Setup",
+      "description": "Configure Docker containers, set up cloud infrastructure (AWS/GCP/Azure), configure environment variables, and establish monitoring and logging",
+      "priority": "high",
+      "tags": ["deployment", "devops", "monitoring"],
+      "estimatedHours": 10
+    },
+    {
+      "title": "Documentation and Handover",
+      "description": "Write API documentation, deployment guides, user manuals, and create developer onboarding documentation",
+      "priority": "medium",
+      "tags": ["documentation"],
+      "estimatedHours": 6
+    }
+  ],
+  "tags": [
+    { "name": "frontend", "color": "#4287f5" },
+    { "name": "backend", "color": "#f5a742" },
+    { "name": "database", "color": "#42f5a7" },
+    { "name": "testing", "color": "#f542a7" },
+    { "name": "deployment", "color": "#a742f5" },
+    { "name": "design", "color": "#f54242" },
+    { "name": "api", "color": "#42d4f5" },
+    { "name": "security", "color": "#ff6b6b" },
+    { "name": "devops", "color": "#4ecdc4" },
+    { "name": "ui", "color": "#95e1d3" },
+    { "name": "performance", "color": "#f38181" },
+    { "name": "monitoring", "color": "#aa96da" },
+    { "name": "documentation", "color": "#fcbad3" },
+    { "name": "setup", "color": "#a8d8ea" },
+    { "name": "architecture", "color": "#aa96da" }
+  ]
+}
