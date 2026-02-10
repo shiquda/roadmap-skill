@@ -27,10 +27,19 @@ interface Task {
 
 type CardMode = 'compact' | 'detailed';
 type StatusFilter = 'all' | 'active' | 'completed';
+type TaskStatus = 'todo' | 'in-progress' | 'review' | 'done';
+
+function normalizeStatus(status: string): TaskStatus {
+  const normalized = status.replace('_', '-');
+  if (normalized === 'todo' || normalized === 'in-progress' || normalized === 'review' || normalized === 'done') {
+    return normalized;
+  }
+  return 'todo';
+}
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string }> = {
   todo: { label: 'TODO', color: 'text-slate-600', bgColor: 'bg-slate-100' },
-  in_progress: { label: 'In Progress', color: 'text-blue-600', bgColor: 'bg-blue-50' },
+  'in-progress': { label: 'In Progress', color: 'text-blue-600', bgColor: 'bg-blue-50' },
   review: { label: 'Review', color: 'text-amber-600', bgColor: 'bg-amber-50' },
   done: { label: 'Done', color: 'text-emerald-600', bgColor: 'bg-emerald-50' },
 };
@@ -42,7 +51,7 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string; bgColor: s
   low: { label: 'Low', color: 'text-emerald-600', bgColor: 'bg-emerald-50' },
 };
 
-const KANBAN_COLUMNS = ['todo', 'in_progress', 'review', 'done'];
+const KANBAN_COLUMNS: TaskStatus[] = ['todo', 'in-progress', 'review', 'done'];
 
 const App: React.FC = () => {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -57,6 +66,7 @@ const App: React.FC = () => {
   const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [addingTaskColumn, setAddingTaskColumn] = useState<string | null>(null);
+  const [taskFormError, setTaskFormError] = useState('');
   const [newTaskForm, setNewTaskForm] = useState({
     title: '',
     description: '',
@@ -86,15 +96,24 @@ const App: React.FC = () => {
     
     fetch(url)
       .then(res => res.json())
-      .then(data => setTasks(data as { task: Task; project: Project }[]));
+      .then(data => {
+        const normalized = (data as { task: Task; project: Project }[]).map((item) => ({
+          ...item,
+          task: {
+            ...item.task,
+            status: normalizeStatus(item.task.status),
+          },
+        }));
+        setTasks(normalized);
+      });
   }, [selectedProject]);
 
   const filteredTasks = tasks.filter(({ task }) => {
     if (statusFilter === 'completed') {
-      if (task.status !== 'done') return false;
+      if (normalizeStatus(task.status) !== 'done') return false;
     }
     if (statusFilter === 'active') {
-      if (task.status === 'done') return false;
+      if (normalizeStatus(task.status) === 'done') return false;
     }
     if (searchKeyword.trim()) {
       const keyword = searchKeyword.toLowerCase();
@@ -122,14 +141,16 @@ const App: React.FC = () => {
           taskId: editingTask.id,
           title: editingTask.title,
           description: editingTask.description,
-          status: editingTask.status,
+          status: normalizeStatus(editingTask.status),
           priority: editingTask.priority,
         }),
       });
 
       if (response.ok) {
         setTasks(prev => prev.map(t => 
-          t.task.id === editingTask.id ? { ...t, task: editingTask } : t
+          t.task.id === editingTask.id
+            ? { ...t, task: { ...editingTask, status: normalizeStatus(editingTask.status) } }
+            : t
         ));
         setIsEditModalOpen(false);
         setEditingTask(null);
@@ -212,11 +233,23 @@ const App: React.FC = () => {
   };
 
   const handleCreateTask = async (status: string) => {
-    if (!newTaskForm.title.trim()) return;
+    const title = newTaskForm.title.trim();
+    if (!title) {
+      setTaskFormError('Title is required.');
+      return;
+    }
+    if (title.length < 3) {
+      setTaskFormError('Title must be at least 3 characters.');
+      return;
+    }
+    if (title.length > 120) {
+      setTaskFormError('Title must be 120 characters or fewer.');
+      return;
+    }
 
-    const targetProjectId = selectedProject || projects[0]?.project.id;
+    const targetProjectId = selectedProject;
     if (!targetProjectId) {
-      alert('Please select a project first');
+      setTaskFormError('Please select a project from the left sidebar before adding a task.');
       return;
     }
 
@@ -226,9 +259,9 @@ const App: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projectId: targetProjectId,
-          title: newTaskForm.title,
+          title,
           description: newTaskForm.description,
-          status: status,
+          status: normalizeStatus(status),
           priority: 'medium',
           dueDate: newTaskForm.dueDate || undefined,
         }),
@@ -238,7 +271,7 @@ const App: React.FC = () => {
         const result = await response.json();
         if (result.success) {
           const project = projects.find(p => p.project.id === targetProjectId)?.project || projects[0].project;
-          setTasks(prev => [...prev, { task: result.data, project }]);
+          setTasks(prev => [...prev, { task: { ...result.data, status: normalizeStatus(result.data.status) }, project }]);
           setProjects(prev => prev.map(p =>
             p.project.id === targetProjectId
               ? { ...p, taskCount: p.taskCount + 1 }
@@ -250,11 +283,13 @@ const App: React.FC = () => {
             dueDate: '',
             showDueDate: false,
           });
+          setTaskFormError('');
           setAddingTaskColumn(null);
         }
       }
     } catch (error) {
       console.error('Failed to create task:', error);
+      setTaskFormError('Failed to create task. Please try again.');
     }
   };
 
@@ -279,7 +314,7 @@ const App: React.FC = () => {
     if (!draggedTask) return;
 
     const taskItem = tasks.find(t => t.task.id === draggedTask);
-    if (!taskItem || taskItem.task.status === newStatus) {
+    if (!taskItem || normalizeStatus(taskItem.task.status) === normalizeStatus(newStatus)) {
       setDraggedTask(null);
       return;
     }
@@ -291,14 +326,14 @@ const App: React.FC = () => {
         body: JSON.stringify({
           projectId: taskItem.project.id,
           taskId: draggedTask,
-          status: newStatus,
+          status: normalizeStatus(newStatus),
         }),
       });
 
       if (response.ok) {
         setTasks(prev => prev.map(t => 
           t.task.id === draggedTask 
-            ? { ...t, task: { ...t.task, status: newStatus } }
+            ? { ...t, task: { ...t.task, status: normalizeStatus(newStatus) } }
             : t
         ));
       }
@@ -309,8 +344,8 @@ const App: React.FC = () => {
     setDraggedTask(null);
   };
 
-  const getTasksByStatus = (status: string) => 
-    filteredTasks.filter(({ task }) => task.status === status);
+  const getTasksByStatus = (status: TaskStatus) => 
+    filteredTasks.filter(({ task }) => normalizeStatus(task.status) === status);
 
   const renderTaskCard = ({ task, project }: { task: Task; project: Project }) => {
     const priority = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.medium;
@@ -534,7 +569,11 @@ const App: React.FC = () => {
                       </span>
                     </div>
                     <button
-                      onClick={() => setAddingTaskColumn(column)}
+                      onClick={() => {
+                        setAddingTaskColumn(column);
+                        setTaskFormError('');
+                        setNewTaskForm({ title: '', description: '', dueDate: '', showDueDate: false });
+                      }}
                       className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded transition-all"
                     >
                       +
@@ -578,6 +617,7 @@ const App: React.FC = () => {
                             onClick={() => {
                               setAddingTaskColumn(null);
                               setNewTaskForm({ title: '', description: '', dueDate: '', showDueDate: false });
+                              setTaskFormError('');
                             }}
                             className="px-2 py-1 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"
                           >
@@ -592,6 +632,9 @@ const App: React.FC = () => {
                           </button>
                         </div>
                       </div>
+                      {taskFormError && (
+                        <p className="text-xs text-red-600 mt-2">{taskFormError}</p>
+                      )}
                     </div>
                   )}
 
@@ -647,7 +690,7 @@ const App: React.FC = () => {
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
                     <option value="todo">Todo</option>
-                    <option value="in_progress">In Progress</option>
+                    <option value="in-progress">In Progress</option>
                     <option value="review">Review</option>
                     <option value="done">Done</option>
                   </select>
