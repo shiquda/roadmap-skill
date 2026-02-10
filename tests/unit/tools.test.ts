@@ -437,6 +437,41 @@ describe('Tools', () => {
         expect(result.success).toBe(true);
         expect(result.data.updatedTasks[0].tags).toContain('new-tag');
       });
+
+      it('should handle tasks with undefined tags', async () => {
+        const project = await createTestProject('Test Project');
+        // Create a task manually with undefined tags to simulate legacy data
+        const { storage } = await import('../../src/storage/index.js');
+        const projectData = await storage.readProject(project.project.id);
+        const taskWithUndefinedTags = {
+          id: `task_${Date.now()}_undefined`,
+          projectId: project.project.id,
+          title: 'Task with undefined tags',
+          description: 'Description',
+          status: 'todo',
+          priority: 'medium',
+          tags: undefined as any,
+          dueDate: null,
+          assignee: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          completedAt: null,
+        };
+        projectData!.tasks.push(taskWithUndefinedTags as any);
+        const filePath = testStorage.getFilePath(project.project.id);
+        const { writeJsonFile } = await import('../../src/utils/file-helpers.js');
+        await writeJsonFile(filePath, projectData!);
+
+        const result = await batchUpdateTasksTool.execute({
+          projectId: project.project.id,
+          taskIds: [taskWithUndefinedTags.id],
+          tags: ['new-tag'],
+          tagOperation: 'add',
+        });
+
+        expect(result.success, result.error).toBe(true);
+        expect(result.data!.updatedTasks[0].tags).toContain('new-tag');
+      });
     });
   });
 

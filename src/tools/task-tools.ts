@@ -335,12 +335,13 @@ export const batchUpdateTasksTool = {
         let updatedTags = existingTask.tags;
 
         if (input.tags && input.tags.length > 0) {
+          const existingTags = existingTask.tags || [];
           switch (input.tagOperation) {
             case 'add':
-              updatedTags = [...new Set([...existingTask.tags, ...input.tags])];
+              updatedTags = [...new Set([...existingTags, ...input.tags])];
               break;
             case 'remove':
-              updatedTags = existingTask.tags.filter((tag) => !input.tags!.includes(tag));
+              updatedTags = existingTags.filter((tag) => !input.tags!.includes(tag));
               break;
             case 'replace':
             default:
