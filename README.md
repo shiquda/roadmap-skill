@@ -15,6 +15,11 @@
   <a href="https://www.npmjs.com/package/roadmap-skill"><img src="https://img.shields.io/npm/dm/roadmap-skill" alt="npm downloads"></a>
 </p>
 
+<p align="center">
+  <a href="https://insiders.vscode.dev/redirect/mcp/install?name=roadmap&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22roadmap-skill%22%5D%7D"><img src="https://img.shields.io/badge/VS_Code-Install%20MCP%20Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white" alt="Install in VS Code"></a>
+  <a href="https://insiders.vscode.dev/redirect/mcp/install?name=roadmap&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22roadmap-skill%22%5D%7D&quality=insiders"><img src="https://img.shields.io/badge/VS_Code_Insiders-Install%20MCP%20Server-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white" alt="Install in VS Code Insiders"></a>
+</p>
+
 ---
 
 ## ✨ Why Roadmap Skill?
@@ -45,19 +50,9 @@ Then open http://localhost:7860 in your browser.
 
 Add to your AI assistant's MCP configuration:
 
-**Claude Desktop:**
-```json
-{
-  "mcpServers": {
-    "roadmap": {
-      "command": "npx",
-      "args": ["-y", "roadmap-skill"]
-    }
-  }
-}
-```
+<details open>
+<summary><b>Claude Desktop (Recommended)</b></summary>
 
-**Cursor:**
 ```json
 {
   "mcpServers": {
@@ -68,6 +63,56 @@ Add to your AI assistant's MCP configuration:
   }
 }
 ```
+</details>
+
+<details>
+<summary><b>Cursor</b></summary>
+
+```json
+{
+  "mcpServers": {
+    "roadmap": {
+      "command": "npx",
+      "args": ["-y", "roadmap-skill"]
+    }
+  }
+}
+```
+</details>
+
+<details>
+<summary><b>VS Code</b></summary>
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "roadmap": {
+        "command": "npx",
+        "args": ["-y", "roadmap-skill"]
+      }
+    }
+  }
+}
+```
+</details>
+
+<details>
+<summary><b>Zed</b></summary>
+
+```json
+{
+  "context_servers": {
+    "roadmap": {
+      "command": {
+        "path": "npx",
+        "args": ["-y", "roadmap-skill"]
+      }
+    }
+  }
+}
+```
+</details>
 
 Then ask your AI:
 > "Create a project called 'Website Redesign' with tasks for homepage, about page, and contact form"
