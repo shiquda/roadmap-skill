@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { getItem, setItem, STORAGE_KEYS } from './utils/storage.js';
+import TagBadge from './components/TagBadge.js';
+import TagFilter from './components/TagFilter.js';
+import TagSelector from './components/TagSelector.js';
+import TagManagerModal from './components/modals/TagManagerModal.js';
 
 interface Project {
   id: string;
@@ -24,6 +28,16 @@ interface Task {
   description?: string;
   dueDate?: string;
   assignee?: string;
+  tags: string[];
+}
+
+interface Tag {
+  id: string;
+  name: string;
+  color: string;
+  description?: string;
+  createdAt?: string;
+  taskCount?: number;
 }
 
 type CardMode = 'compact' | 'detailed';
@@ -73,6 +87,7 @@ const App: React.FC = () => {
     priority: 'medium' as 'critical' | 'high' | 'medium' | 'low',
     dueDate: '',
     showDueDate: false,
+    tags: [] as string[],
   });
   const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
   const [createTaskStatus, setCreateTaskStatus] = useState<TaskStatus>('todo');
@@ -85,6 +100,9 @@ const App: React.FC = () => {
   });
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
 
   // Load persisted state on mount
   useEffect(() => {
@@ -139,10 +157,26 @@ const App: React.FC = () => {
           task: {
             ...item.task,
             status: normalizeStatus(item.task.status),
+            tags: item.task.tags || [],
           },
         }));
         setTasks(normalized);
       });
+  }, [selectedProject]);
+
+  useEffect(() => {
+    if (selectedProject) {
+      fetch(`/api/projects/${selectedProject}/tags`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            setTags(data.data);
+          }
+        });
+    } else {
+      setTags([]);
+      setSelectedTagIds([]);
+    }
   }, [selectedProject]);
 
   const filteredTasks = tasks.filter(({ task }) => {
@@ -152,6 +186,11 @@ const App: React.FC = () => {
     if (statusFilter === 'active') {
       if (normalizeStatus(task.status) === 'done') return false;
     }
+    if (selectedTagIds.length > 0) {
+      if (!task.tags || !selectedTagIds.every(id => task.tags.includes(id))) {
+        return false;
+      }
+    }
     if (searchKeyword.trim()) {
       const keyword = searchKeyword.toLowerCase();
       const matchTitle = task.title.toLowerCase().includes(keyword);
@@ -160,6 +199,18 @@ const App: React.FC = () => {
     }
     return true;
   });
+
+  const handleTagsChange = (newTags: Tag[]) => {
+    setTags(newTags);
+    const tagIds = new Set(newTags.map(t => t.id));
+    setTasks(prev => prev.map(item => ({
+      ...item,
+      task: {
+        ...item.task,
+        tags: (item.task.tags || []).filter(id => tagIds.has(id))
+      }
+    })));
+  };
 
   const handleEditTask = (task: Task) => {
     setEditingTask(task);
@@ -180,6 +231,8 @@ const App: React.FC = () => {
           description: editingTask.description,
           status: normalizeStatus(editingTask.status),
           priority: editingTask.priority,
+          tags: editingTask.tags,
+          dueDate: editingTask.dueDate,
         }),
       });
 
@@ -287,11 +340,16 @@ const App: React.FC = () => {
   };
 
   const handleDragOverFile = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDraggingFile(true);
+    if (e.dataTransfer.types.includes('Files')) {
+      e.preventDefault();
+      setIsDraggingFile(true);
+    }
   };
 
-  const handleDragLeaveFile = () => {
+  const handleDragLeaveFile = (e: React.DragEvent) => {
+    if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget as Node)) {
+      return;
+    }
     setIsDraggingFile(false);
   };
 
@@ -373,6 +431,7 @@ const App: React.FC = () => {
           status: normalizeStatus(createTaskStatus),
           priority: newTaskForm.priority,
           dueDate: newTaskForm.dueDate || undefined,
+          tags: newTaskForm.tags,
         }),
       });
 
@@ -392,6 +451,7 @@ const App: React.FC = () => {
             priority: 'medium',
             dueDate: '',
             showDueDate: false,
+            tags: [],
           });
           setTaskFormError('');
           setIsCreateTaskModalOpen(false);
@@ -405,6 +465,7 @@ const App: React.FC = () => {
 
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
     setDraggedTask(taskId);
+    e.dataTransfer.setData('text/plain', taskId);
     e.dataTransfer.effectAllowed = 'move';
   };
 
@@ -413,7 +474,10 @@ const App: React.FC = () => {
     setDragOverColumn(column);
   };
 
-  const handleDragLeave = () => {
+  const handleDragLeave = (e: React.DragEvent) => {
+    if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget as Node)) {
+      return;
+    }
     setDragOverColumn(null);
   };
 
@@ -471,92 +535,118 @@ const App: React.FC = () => {
         key={task.id}
         draggable
         onDragStart={(e) => handleDragStart(e, task.id)}
-        className={`bg-white rounded-lg border border-slate-200 cursor-move transition-all duration-200 ease-out group flex flex-col ${
+        onDragEnd={() => setDraggedTask(null)}
+        className={`bg-white rounded-2xl border border-slate-100/50 cursor-move transition-all duration-300 ease-out group flex flex-col ${
           isDragging
-            ? 'shadow-xl scale-105 border-blue-400 rotate-1'
-            : 'shadow-sm hover:shadow-md hover:border-slate-300'
+            ? 'shadow-2xl scale-105 border-emerald-400 rotate-1 z-10'
+            : 'shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-emerald-100'
         } ${
           cardMode === 'compact' ? 'p-4' : 'p-5'
         }`}
       >
-        <div className="flex justify-between items-center mb-2">
-          <span className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${priority.bgColor} ${priority.color}`}>
+        <div className="flex justify-between items-start mb-3">
+          <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg ${priority.bgColor} ${priority.color} border border-current opacity-80`}>
             {priority.label}
           </span>
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-slate-400 truncate max-w-[80px]">{project.name}</span>
-            <div className="flex items-center">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleEditTask(task);
-                }}
-                className="p-1 text-slate-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity text-xs"
-                title="Edit"
-              >
-                ✏️
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteTask(task.id, project.id);
-                }}
-                className="p-1 text-slate-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity text-xs"
-                title="Delete"
-              >
-                🗑️
-              </button>
-            </div>
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleEditTask(task);
+              }}
+              className="p-1.5 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 rounded-lg transition-all"
+              title="Edit"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDeleteTask(task.id, project.id);
+              }}
+              className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+              title="Delete"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-4v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+            </button>
           </div>
         </div>
         <h3
           onClick={() => handleEditTask(task)}
-          className={`text-slate-800 font-medium cursor-pointer leading-snug ${
-            cardMode === 'compact' ? 'text-xs line-clamp-1' : 'text-sm line-clamp-2 mb-2'
+          className={`text-slate-800 font-bold cursor-pointer leading-tight hover:text-emerald-500 transition-colors ${
+            cardMode === 'compact' ? 'text-sm line-clamp-2' : 'text-base line-clamp-2 mb-2'
           }`}
         >
           {task.title}
         </h3>
+        
+        {task.tags && task.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-3 mb-1">
+            {task.tags.map(tagId => {
+              const tag = tags.find(t => t.id === tagId);
+              return tag ? (
+                <TagBadge
+                  key={tagId}
+                  name={tag.name}
+                  color={tag.color}
+                  size="sm"
+                  className="rounded-lg font-bold"
+                />
+              ) : null;
+            })}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-50">
+          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter truncate max-w-[100px]">{project.name}</span>
+          {task.dueDate && (
+            <div className="flex items-center gap-1 text-[10px] text-slate-400 font-bold">
+              <span>📅</span>
+              <span>{new Date(task.dueDate).toLocaleDateString([], {month: 'short', day: 'numeric'})}</span>
+            </div>
+          )}
+        </div>
+
         {cardMode === 'detailed' && task.description && (
-          <p className="text-xs text-slate-500 line-clamp-2 mb-2">
+          <p className="text-xs text-slate-500 line-clamp-2 mt-3 leading-relaxed bg-slate-50/50 p-2 rounded-lg border border-slate-100/50">
             {task.description}
           </p>
-        )}
-        {cardMode === 'detailed' && task.dueDate && (
-          <div className="text-[11px] text-slate-500">
-            Due: {new Date(task.dueDate).toLocaleDateString()}
-          </div>
         )}
       </div>
     );
   };
 
   return (
-    <div className="min-h-screen p-8">
-      <header className="mb-8">
-        <h1 className="text-4xl font-bold text-slate-900 tracking-tight">Roadmap Skill</h1>
-        <p className="text-slate-500 mt-2">Visual task & project management</p>
+    <div className="min-h-screen bg-emerald-50/50 p-8">
+      <header className="mb-10 flex justify-between items-end">
+        <div>
+          <h1 className="text-5xl font-extrabold text-slate-900 tracking-tightest">
+            Nova<span className="text-emerald-500">Board</span>
+          </h1>
+          <p className="text-slate-500 mt-3 font-medium text-lg italic">Visual task & project management</p>
+        </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <aside className="lg:col-span-2 min-w-[200px]">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Projects</h2>
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400">Projects</h2>
             <button
               onClick={() => setIsCreateProjectOpen(true)}
-              className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              className="w-8 h-8 flex items-center justify-center bg-emerald-500 text-white rounded-full hover:bg-emerald-600 transition-all shadow-md shadow-emerald-500/20 active:scale-95"
+              title="New Project"
             >
-              + New
+              <span className="text-lg">+</span>
             </button>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-3">
             <button
               onClick={() => setSelectedProject(null)}
-              className={`w-full text-left px-4 py-2 rounded-lg transition-all ${!selectedProject ? 'bg-white shadow-sm ring-1 ring-slate-200 text-slate-900 font-medium' : 'text-slate-600 hover:bg-slate-100'}`}
+              className={`w-full text-left px-4 py-3 rounded-xl transition-all duration-300 ${!selectedProject ? 'bg-white shadow-md ring-1 ring-slate-100 text-slate-900 font-bold' : 'text-slate-500 hover:bg-white/50 hover:text-slate-800'}`}
             >
               <div className="flex justify-between items-center">
                 <span>All Projects</span>
-                <span className="text-xs bg-slate-100 px-2 py-0.5 rounded text-slate-500">
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${!selectedProject ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
                   {projects.reduce((sum, p) => sum + p.taskCount, 0)}
                 </span>
               </div>
@@ -565,11 +655,13 @@ const App: React.FC = () => {
               <div key={p.project.id} className="group relative">
                 <button
                   onClick={() => setSelectedProject(p.project.id)}
-                  className={`w-full text-left px-4 py-2 rounded-lg transition-all ${selectedProject === p.project.id ? 'bg-white shadow-sm ring-1 ring-slate-200 text-slate-900 font-medium' : 'text-slate-600 hover:bg-slate-100'}`}
+                  className={`w-full text-left px-4 py-3 rounded-xl transition-all duration-300 ${selectedProject === p.project.id ? 'bg-white shadow-md ring-1 ring-slate-100 text-slate-900 font-bold' : 'text-slate-500 hover:bg-white/50 hover:text-slate-800'}`}
                 >
                   <div className="flex justify-between items-center">
                     <span className="truncate pr-6">{p.project.name}</span>
-                    <span className="text-xs bg-slate-100 px-2 py-0.5 rounded text-slate-500">{p.taskCount}</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${selectedProject === p.project.id ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
+                      {p.taskCount}
+                    </span>
                   </div>
                 </button>
                 <button
@@ -577,24 +669,33 @@ const App: React.FC = () => {
                     e.stopPropagation();
                     handleDeleteProject(p.project.id);
                   }}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
                   title="Delete Project"
                 >
-                  🗑️
+                  ✕
                 </button>
               </div>
             ))}
           </div>
-          <div className="mt-6 pt-4 border-t border-slate-200 space-y-2">
+          <div className="mt-8 pt-6 border-t border-slate-200/50 space-y-3">
+            <button
+              onClick={() => setIsTagManagerOpen(true)}
+              className="w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-white/50 rounded-xl transition-all group"
+            >
+              <span className="text-lg group-hover:scale-125 transition-transform">🏷️</span>
+              <span>Manage Tags</span>
+            </button>
             <button
               onClick={handleExport}
-              className="w-full text-left px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 transition-all flex items-center gap-2 text-sm"
+              className="w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-white/50 rounded-xl transition-all"
               title="Export all data as JSON"
             >
-              <span>↓</span> Export Data
+              <span className="text-lg">📥</span>
+              <span>Export Data</span>
             </button>
-            <label className="w-full text-left px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 transition-all flex items-center gap-2 text-sm cursor-pointer block">
-              <span>↑</span> Import Data
+            <label className="w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-white/50 rounded-xl transition-all cursor-pointer">
+              <span className="text-lg">📤</span>
+              <span>Import Data</span>
               <input
                 type="file"
                 accept=".json,application/json"
@@ -641,26 +742,26 @@ const App: React.FC = () => {
               </button>
             </div>
           )}
-          <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-500">Card:</span>
-              <div className="flex bg-slate-100 rounded-lg p-1">
+          <div className="flex flex-wrap items-center gap-6 mb-8 bg-white/40 backdrop-blur-md p-4 rounded-2xl border border-white/50 shadow-sm">
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-bold uppercase tracking-widest text-slate-400">View</span>
+              <div className="flex bg-slate-200/50 rounded-xl p-1">
                 <button
                   onClick={() => setCardMode('compact')}
-                  className={`px-3 py-1.5 text-sm rounded-md transition-all ${
+                  className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${
                     cardMode === 'compact'
-                      ? 'bg-white text-slate-900 shadow-sm font-medium'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
                   }`}
                 >
                   Compact
                 </button>
                 <button
                   onClick={() => setCardMode('detailed')}
-                  className={`px-3 py-1.5 text-sm rounded-md transition-all ${
+                  className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${
                     cardMode === 'detailed'
-                      ? 'bg-white text-slate-900 shadow-sm font-medium'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
                   }`}
                 >
                   Detailed
@@ -668,54 +769,59 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-500">Filter:</span>
-              <div className="flex bg-slate-100 rounded-lg p-1">
-                <button
-                  onClick={() => setStatusFilter('all')}
-                  className={`px-3 py-1.5 text-sm rounded-md transition-all ${
-                    statusFilter === 'all'
-                      ? 'bg-white text-slate-900 shadow-sm font-medium'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  All
-                </button>
-                <button
-                  onClick={() => setStatusFilter('active')}
-                  className={`px-3 py-1.5 text-sm rounded-md transition-all ${
-                    statusFilter === 'active'
-                      ? 'bg-white text-slate-900 shadow-sm font-medium'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Active
-                </button>
-                <button
-                  onClick={() => setStatusFilter('completed')}
-                  className={`px-3 py-1.5 text-sm rounded-md transition-all ${
-                    statusFilter === 'completed'
-                      ? 'bg-white text-slate-900 shadow-sm font-medium'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Completed
-                </button>
+            <div className="h-6 w-px bg-slate-200/50 hidden md:block" />
+
+            <div className="flex items-center gap-3 flex-1 min-w-[200px]">
+              <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Tags</span>
+              {tags.length > 0 ? (
+                <TagFilter
+                  tags={tags}
+                  selectedTags={selectedTagIds}
+                  onChange={setSelectedTagIds}
+                />
+              ) : (
+                <span className="text-xs text-slate-400 italic">No tags defined</span>
+              )}
+            </div>
+
+            <div className="h-6 w-px bg-slate-200/50 hidden md:block" />
+
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Status</span>
+              <div className="flex bg-slate-200/50 rounded-xl p-1">
+                {(['all', 'active', 'completed'] as StatusFilter[]).map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setStatusFilter(f)}
+                    className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all capitalize ${
+                      statusFilter === f
+                        ? 'bg-white text-slate-900 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    {f}
+                  </button>
+                ))}
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={searchKeyword}
-                onChange={(e) => setSearchKeyword(e.target.value)}
-                placeholder="Search tasks..."
-                className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-48"
-              />
+            <div className="h-6 w-px bg-slate-200/50 hidden md:block" />
+
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
+                <input
+                  type="text"
+                  value={searchKeyword}
+                  onChange={(e) => setSearchKeyword(e.target.value)}
+                  placeholder="Search tasks..."
+                  className="pl-9 pr-4 py-2 text-sm bg-white/50 border border-transparent rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all w-48 shadow-inner"
+                />
+              </div>
             </div>
 
-            <div className="text-sm text-slate-500">
-              {filteredTasks.length} tasks
+            <div className="text-xs font-bold text-slate-400 bg-slate-100 px-3 py-1.5 rounded-full ml-auto">
+              {filteredTasks.length} {filteredTasks.length === 1 ? 'Task' : 'Tasks'}
             </div>
           </div>
 
@@ -727,30 +833,33 @@ const App: React.FC = () => {
               return (
                 <div
                   key={column}
-                  className={`rounded-xl p-4 min-h-[400px] transition-colors ${
-                    isDragOver ? 'bg-blue-100 ring-2 ring-blue-400' : 'bg-slate-50/50'
+                  className={`rounded-2xl p-4 min-h-[500px] transition-all duration-300 flex flex-col ${
+                    isDragOver 
+                      ? 'bg-emerald-100/50 ring-2 ring-emerald-400 shadow-lg scale-[1.02]' 
+                      : 'bg-white/30 backdrop-blur-[2px] border border-white/50 shadow-sm'
                   }`}
                   onDragOver={(e) => handleDragOver(e, column)}
                   onDragLeave={handleDragLeave}
                   onDrop={(e) => handleDrop(e, column)}
                 >
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-slate-700">{statusConfig.label}</h3>
-                      <span className="text-xs bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">
+                  <div className="flex items-center justify-between mb-6 px-1">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-2 h-6 rounded-full ${statusConfig.bgColor.replace('bg-', 'bg-')}`} style={{backgroundColor: statusConfig.color.includes('blue') ? '#3B82F6' : statusConfig.color.includes('amber') ? '#F59E0B' : statusConfig.color.includes('emerald') ? '#10B981' : '#64748B'}}></div>
+                      <h3 className="font-bold text-slate-800 tracking-tight">{statusConfig.label}</h3>
+                      <span className="text-[10px] font-bold bg-white/60 text-slate-500 px-2 py-0.5 rounded-full shadow-sm">
                         {columnTasks.length}
                       </span>
                     </div>
                     <button
-                      onClick={() => {
-                        setCreateTaskStatus(column);
-                        setTaskFormError('');
-                        setNewTaskForm({ title: '', description: '', priority: 'medium', dueDate: '', showDueDate: false });
-                        setIsCreateTaskModalOpen(true);
-                      }}
-                      className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded transition-all"
+                        onClick={() => {
+                          setCreateTaskStatus(column);
+                          setTaskFormError('');
+                          setNewTaskForm({ title: '', description: '', priority: 'medium', dueDate: '', showDueDate: false, tags: [] });
+                          setIsCreateTaskModalOpen(true);
+                        }}
+                      className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-emerald-500 hover:bg-white rounded-xl transition-all shadow-sm hover:shadow-md active:scale-90"
                     >
-                      +
+                      <span className="text-xl">+</span>
                     </button>
                   </div>
 
@@ -835,6 +944,16 @@ const App: React.FC = () => {
                   </select>
                 </div>
               </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Tags</label>
+                <TagSelector
+                  tags={tags}
+                  selectedTagIds={editingTask.tags || []}
+                  onChange={(newTagIds) => setEditingTask({ ...editingTask, tags: newTagIds })}
+                />
+              </div>
+
               {editingTask.dueDate && (
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
@@ -927,6 +1046,16 @@ const App: React.FC = () => {
                   />
                 </div>
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Tags</label>
+                <TagSelector
+                  tags={tags}
+                  selectedTagIds={newTaskForm.tags}
+                  onChange={(newTagIds) => setNewTaskForm({ ...newTaskForm, tags: newTagIds })}
+                />
+              </div>
+
               {taskFormError && (
                 <p className="text-sm text-red-600">{taskFormError}</p>
               )}
@@ -968,13 +1097,13 @@ const App: React.FC = () => {
             </div>
             <div className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Name</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Name *</label>
                 <input
                   type="text"
                   value={newProject.name}
                   onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Project name"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
               <div>
@@ -982,32 +1111,23 @@ const App: React.FC = () => {
                 <textarea
                   value={newProject.description}
                   onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
+                  placeholder="Project description"
                   rows={3}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                  placeholder="Project description"
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Type</label>
-                <select
-                  value={newProject.projectType}
-                  onChange={(e) => setNewProject({ ...newProject, projectType: e.target.value as any })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="roadmap">Roadmap</option>
-                  <option value="skill-tree">Skill Tree</option>
-                  <option value="kanban">Kanban</option>
-                </select>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Start Date</label>
-                  <input
-                    type="date"
-                    value={newProject.startDate}
-                    onChange={(e) => setNewProject({ ...newProject, startDate: e.target.value })}
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Type</label>
+                  <select
+                    value={newProject.projectType}
+                    onChange={(e) => setNewProject({ ...newProject, projectType: e.target.value as any })}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
+                  >
+                    <option value="roadmap">Roadmap</option>
+                    <option value="skill-tree">Skill Tree</option>
+                    <option value="kanban">Kanban</option>
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Target Date</label>
@@ -1029,7 +1149,7 @@ const App: React.FC = () => {
               </button>
               <button
                 onClick={handleCreateProject}
-                disabled={!newProject.name}
+                disabled={!newProject.name.trim()}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors font-medium"
               >
                 Create Project
@@ -1038,6 +1158,14 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
+
+      <TagManagerModal
+        isOpen={isTagManagerOpen}
+        onClose={() => setIsTagManagerOpen(false)}
+        projectId={selectedProject || ''}
+        tags={tags}
+        onTagsChange={handleTagsChange}
+      />
     </div>
   );
 };
