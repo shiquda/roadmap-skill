@@ -183,7 +183,7 @@ export function createServer(port: number = 7860): Promise<Server> {
       res.sendFile(path.join(distPath, 'index.html'));
     });
 
-    const server = app.listen(port, 'localhost');
+    const server = app.listen(port, '127.0.0.1');
 
     server.once('listening', () => {
       console.log(`Web interface server running at http://localhost:${port}`);
