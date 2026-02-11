@@ -246,7 +246,82 @@ export class ProjectStorage {
 
     return results;
   }
+
+  async exportAllData(): Promise<{
+    version: number;
+    exportedAt: string;
+    projects: ProjectData[];
+  }> {
+    await this.ensureDirectory();
+
+    const fs = await import('fs/promises');
+    const files = await fs.readdir(this.storageDir);
+    const jsonFiles = files.filter((f) => f.endsWith('.json'));
+
+    const projects: ProjectData[] = [];
+
+    for (const file of jsonFiles) {
+      try {
+        const filePath = path.join(this.storageDir, file);
+        const data = await readJsonFile<ProjectData>(filePath);
+        projects.push(data);
+      } catch {
+        continue;
+      }
+    }
+
+    return {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      projects,
+    };
+  }
+
+  async importAllData(data: {
+    version: number;
+    exportedAt: string;
+    projects: ProjectData[];
+  }): Promise<{
+    success: boolean;
+    imported: number;
+    errors: number;
+    errorDetails: string[];
+  }> {
+    await this.ensureDirectory();
+
+    let imported = 0;
+    let errors = 0;
+    const errorDetails: string[] = [];
+
+    if (!data.projects || !Array.isArray(data.projects)) {
+      throw new Error('Invalid backup data: projects array is required');
+    }
+
+    for (const projectData of data.projects) {
+      try {
+        if (!projectData.project || !projectData.project.id) {
+          errors++;
+          errorDetails.push('Skipping invalid project: missing project or id');
+          continue;
+        }
+
+        const filePath = this.getFilePath(projectData.project.id);
+        await writeJsonFile(filePath, projectData);
+        imported++;
+      } catch (error) {
+        errors++;
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        errorDetails.push(`Failed to import project ${projectData.project?.id || 'unknown'}: ${errorMessage}`);
+      }
+    }
+
+    return {
+      success: errors === 0,
+      imported,
+      errors,
+      errorDetails,
+    };
+  }
 }
 
-// Export singleton instance
 export const storage = new ProjectStorage();

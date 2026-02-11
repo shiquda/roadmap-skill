@@ -172,6 +172,30 @@ export function createServer(port: number = 7860): Promise<Server> {
       }
     });
 
+    app.get('/api/backup', async (_req, res) => {
+      try {
+        const backup = await storage.exportAllData();
+        const filename = `roadmap-skill-backup-${new Date().toISOString().split('T')[0]}.json`;
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.json(backup);
+      } catch (error) {
+        res.status(500).json({ error: (error as Error).message });
+      }
+    });
+
+    app.post('/api/backup', async (req, res) => {
+      try {
+        const result = await storage.importAllData(req.body);
+        res.json(result);
+      } catch (error) {
+        res.status(400).json({
+          success: false,
+          error: (error as Error).message,
+        });
+      }
+    });
+
     const distPath = path.join(process.cwd(), 'dist', 'web', 'app');
     app.use(express.static(distPath));
 

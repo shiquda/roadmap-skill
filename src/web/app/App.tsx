@@ -83,6 +83,8 @@ const App: React.FC = () => {
     startDate: new Date().toISOString().split('T')[0],
     targetDate: '',
   });
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Load persisted state on mount
   useEffect(() => {
@@ -233,6 +235,78 @@ const App: React.FC = () => {
       }
     } catch (error) {
       console.error('Failed to delete project:', error);
+    }
+  };
+
+  const handleExport = async () => {
+    try {
+      const response = await fetch('/api/backup');
+      if (!response.ok) {
+        throw new Error('Export failed');
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const date = new Date().toISOString().split('T')[0];
+      a.href = url;
+      a.download = `roadmap-skill-backup-${date}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      alert('Export failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
+  };
+
+  const handleImport = async (file: File) => {
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      
+      const response = await fetch('/api/backup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Import failed');
+      }
+      
+      const result = await response.json();
+      if (result.success) {
+        setImportStatus({ type: 'success', message: `Successfully imported ${result.imported} projects` });
+        window.location.reload();
+      } else {
+        setImportStatus({ type: 'error', message: `Import completed with ${result.errors} errors` });
+      }
+    } catch (error) {
+      setImportStatus({ type: 'error', message: 'Import failed: ' + (error instanceof Error ? error.message : 'Invalid file') });
+    }
+  };
+
+  const handleDragOverFile = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingFile(true);
+  };
+
+  const handleDragLeaveFile = () => {
+    setIsDraggingFile(false);
+  };
+
+  const handleDropFile = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingFile(false);
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      const file = files[0];
+      if (file.type === 'application/json' || file.name.endsWith('.json')) {
+        await handleImport(file);
+      } else {
+        setImportStatus({ type: 'error', message: 'Please drop a JSON backup file' });
+      }
     }
   };
 
@@ -511,9 +585,62 @@ const App: React.FC = () => {
               </div>
             ))}
           </div>
+          <div className="mt-6 pt-4 border-t border-slate-200 space-y-2">
+            <button
+              onClick={handleExport}
+              className="w-full text-left px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 transition-all flex items-center gap-2 text-sm"
+              title="Export all data as JSON"
+            >
+              <span>↓</span> Export Data
+            </button>
+            <label className="w-full text-left px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 transition-all flex items-center gap-2 text-sm cursor-pointer block">
+              <span>↑</span> Import Data
+              <input
+                type="file"
+                accept=".json,application/json"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    handleImport(file);
+                  }
+                  e.target.value = '';
+                }}
+                className="hidden"
+              />
+            </label>
+          </div>
         </aside>
 
-        <main className="lg:col-span-10">
+        <main
+          className={`lg:col-span-10 relative ${isDraggingFile ? 'ring-2 ring-blue-400 ring-dashed bg-blue-50/30' : ''}`}
+          onDragOver={handleDragOverFile}
+          onDragLeave={handleDragLeaveFile}
+          onDrop={handleDropFile}
+        >
+          {isDraggingFile && (
+            <div className="absolute inset-0 bg-blue-100/80 flex items-center justify-center z-50 rounded-xl">
+              <div className="text-center">
+                <div className="text-4xl mb-2">📁</div>
+                <p className="text-lg font-medium text-blue-900">Drop backup file here</p>
+                <p className="text-sm text-blue-600">JSON files only</p>
+              </div>
+            </div>
+          )}
+          {importStatus && (
+            <div
+              className={`absolute top-4 right-4 px-4 py-3 rounded-lg shadow-lg z-50 transition-all ${
+                importStatus.type === 'success' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+              }`}
+            >
+              {importStatus.message}
+              <button
+                onClick={() => setImportStatus(null)}
+                className="ml-3 text-sm font-medium hover:opacity-70"
+              >
+                ×
+              </button>
+            </div>
+          )}
           <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
             <div className="flex items-center gap-2">
               <span className="text-sm text-slate-500">Card:</span>
