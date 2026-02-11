@@ -44,6 +44,9 @@ jobs:
   publish:
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     
     steps:
@@ -61,7 +64,7 @@ jobs:
     - name: Build project
       run: npm run build
     
-    - name: Publish to npm
-      run: npm publish --access public
+    - name: Publish to npm with provenance
+      run: npm publish --provenance --access public
       env:
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
