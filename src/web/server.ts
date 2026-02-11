@@ -2,6 +2,9 @@ import express from 'express';
 import * as path from 'path';
 import type { Server } from 'http';
 import { storage } from '../storage/index.js';
+import { TaskService, TagService } from '../services/index.js';
+
+const tagService = new TagService(storage);
 
 export function createServer(port: number = 7860): Promise<Server> {
   return new Promise((resolve, reject) => {
@@ -79,31 +82,13 @@ export function createServer(port: number = 7860): Promise<Server> {
     app.post('/api/tasks', async (req, res) => {
       try {
         const { projectId, ...taskData } = req.body;
-        const projectData = await storage.readProject(projectId);
-        if (!projectData) {
-          res.status(404).json({ error: 'Project not found' });
+        const result = await TaskService.create(projectId, taskData);
+        if (!result.success) {
+          const statusCode = result.code === 'NOT_FOUND' ? 404 : 400;
+          res.status(statusCode).json({ error: result.error });
           return;
         }
-        const now = new Date().toISOString();
-        const task = {
-          id: `task_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-          projectId,
-          ...taskData,
-          status: taskData.status || 'todo',
-          priority: taskData.priority || 'medium',
-          tags: taskData.tags || [],
-          dueDate: taskData.dueDate || null,
-          assignee: taskData.assignee || null,
-          createdAt: now,
-          updatedAt: now,
-          completedAt: null,
-        };
-        projectData.tasks.push(task);
-        projectData.project.updatedAt = now;
-        const filePath = storage.getFilePath(projectId);
-        const { writeJsonFile } = await import('../utils/file-helpers.js');
-        await writeJsonFile(filePath, projectData);
-        res.json({ success: true, data: task });
+        res.json({ success: true, data: result.data });
       } catch (error) {
         res.status(500).json({ error: (error as Error).message });
       }
@@ -112,37 +97,13 @@ export function createServer(port: number = 7860): Promise<Server> {
     app.put('/api/tasks', async (req, res) => {
       try {
         const { projectId, taskId, ...updateData } = req.body;
-        const projectData = await storage.readProject(projectId);
-        if (!projectData) {
-          res.status(404).json({ error: 'Project not found' });
+        const result = await TaskService.update(projectId, taskId, updateData);
+        if (!result.success) {
+          const statusCode = result.code === 'NOT_FOUND' ? 404 : 400;
+          res.status(statusCode).json({ error: result.error });
           return;
         }
-        const taskIndex = projectData.tasks.findIndex((t: any) => t.id === taskId);
-        if (taskIndex === -1) {
-          res.status(404).json({ error: 'Task not found' });
-          return;
-        }
-        const now = new Date().toISOString();
-        const existingTask = projectData.tasks[taskIndex];
-        const updatedTask = {
-          ...existingTask,
-          ...updateData,
-          id: existingTask.id,
-          projectId: existingTask.projectId,
-          createdAt: existingTask.createdAt,
-          updatedAt: now,
-          completedAt: updateData.status === 'done' && existingTask.status !== 'done'
-            ? now
-            : updateData.status && updateData.status !== 'done'
-              ? null
-              : existingTask.completedAt,
-        };
-        projectData.tasks[taskIndex] = updatedTask;
-        projectData.project.updatedAt = now;
-        const filePath = storage.getFilePath(projectId);
-        const { writeJsonFile } = await import('../utils/file-helpers.js');
-        await writeJsonFile(filePath, projectData);
-        res.json({ success: true, data: updatedTask });
+        res.json({ success: true, data: result.data });
       } catch (error) {
         res.status(500).json({ error: (error as Error).message });
       }
@@ -151,22 +112,73 @@ export function createServer(port: number = 7860): Promise<Server> {
     app.delete('/api/tasks', async (req, res) => {
       try {
         const { projectId, taskId } = req.query;
-        const projectData = await storage.readProject(projectId as string);
-        if (!projectData) {
-          res.status(404).json({ error: 'Project not found' });
+        const result = await TaskService.delete(projectId as string, taskId as string);
+        if (!result.success) {
+          const statusCode = result.code === 'NOT_FOUND' ? 404 : 400;
+          res.status(statusCode).json({ error: result.error });
           return;
         }
-        const taskIndex = projectData.tasks.findIndex((t: any) => t.id === taskId);
-        if (taskIndex === -1) {
-          res.status(404).json({ error: 'Task not found' });
-          return;
-        }
-        projectData.tasks.splice(taskIndex, 1);
-        projectData.project.updatedAt = new Date().toISOString();
-        const filePath = storage.getFilePath(projectId as string);
-        const { writeJsonFile } = await import('../utils/file-helpers.js');
-        await writeJsonFile(filePath, projectData);
         res.json({ success: true });
+      } catch (error) {
+        res.status(500).json({ error: (error as Error).message });
+      }
+    });
+
+    app.post('/api/projects/:projectId/tags', async (req, res) => {
+      try {
+        const { projectId } = req.params;
+        const result = await tagService.create(projectId, req.body);
+        if (!result.success) {
+          const statusCode = result.code === 'NOT_FOUND' ? 404 : 400;
+          res.status(statusCode).json({ error: result.error });
+          return;
+        }
+        res.json({ success: true, data: result.data });
+      } catch (error) {
+        res.status(500).json({ error: (error as Error).message });
+      }
+    });
+
+    app.get('/api/projects/:projectId/tags', async (req, res) => {
+      try {
+        const { projectId } = req.params;
+        const result = await tagService.list(projectId);
+        if (!result.success) {
+          const statusCode = result.code === 'NOT_FOUND' ? 404 : 400;
+          res.status(statusCode).json({ error: result.error });
+          return;
+        }
+        res.json({ success: true, data: result.data });
+      } catch (error) {
+        res.status(500).json({ error: (error as Error).message });
+      }
+    });
+
+    app.put('/api/projects/:projectId/tags/:tagId', async (req, res) => {
+      try {
+        const { projectId, tagId } = req.params;
+        const result = await tagService.update(projectId, tagId, req.body);
+        if (!result.success) {
+          const statusCode = result.code === 'NOT_FOUND' ? 404 : 400;
+          res.status(statusCode).json({ error: result.error });
+          return;
+        }
+        res.json({ success: true, data: result.data });
+      } catch (error) {
+        res.status(500).json({ error: (error as Error).message });
+      }
+    });
+
+    app.delete('/api/projects/:projectId/tags/:tagId', async (req, res) => {
+      try {
+        const { projectId, tagId } = req.params;
+        const result = await tagService.delete(projectId, tagId);
+        if (!result.success) {
+          const statusCode = result.code === 'NOT_FOUND' ? 404 : 400;
+          res.status(statusCode).json({ error: result.error });
+          return;
+        }
+        res.json({ success: true, data: result.data });
       } catch (error) {
         res.status(500).json({ error: (error as Error).message });
       }
@@ -222,5 +234,14 @@ export function createServer(port: number = 7860): Promise<Server> {
 
       reject(error);
     });
+  });
+}
+
+// Start server if run directly
+if (process.argv[1]?.endsWith('server.js')) {
+  const port = parseInt(process.argv[2] || '7860', 10);
+  createServer(port).catch(err => {
+    console.error('Failed to start server:', err);
+    process.exit(1);
   });
 }

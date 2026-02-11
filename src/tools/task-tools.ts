@@ -1,13 +1,9 @@
 import { z } from 'zod';
+import { TaskService } from '../services/index.js';
 import { storage } from '../storage/index.js';
-import type { Task } from '../models/index.js';
 
 const TaskStatusEnum = z.enum(['todo', 'in-progress', 'review', 'done']);
 const TaskPriorityEnum = z.enum(['low', 'medium', 'high', 'critical']);
-
-function generateTaskId(): string {
-  return `task_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-}
 
 export const createTaskTool = {
   name: 'create_task',
@@ -30,48 +26,16 @@ export const createTaskTool = {
     dueDate?: string;
     assignee?: string;
   }) {
-    try {
-      const projectData = await storage.readProject(input.projectId);
-      if (!projectData) {
-        return {
-          success: false,
-          error: `Project with ID '${input.projectId}' not found`,
-        };
-      }
+    const result = await TaskService.create(input.projectId, {
+      title: input.title,
+      description: input.description,
+      priority: input.priority,
+      tags: input.tags,
+      dueDate: input.dueDate,
+      assignee: input.assignee,
+    });
 
-      const now = new Date().toISOString();
-      const task: Task = {
-        id: generateTaskId(),
-        projectId: input.projectId,
-        title: input.title,
-        description: input.description,
-        status: 'todo',
-        priority: input.priority,
-        tags: input.tags,
-        dueDate: input.dueDate ?? null,
-        assignee: input.assignee ?? null,
-        createdAt: now,
-        updatedAt: now,
-        completedAt: null,
-      };
-
-      projectData.tasks.push(task);
-      projectData.project.updatedAt = now;
-
-      const filePath = storage.getFilePath(input.projectId);
-      const { writeJsonFile } = await import('../utils/file-helpers.js');
-      await writeJsonFile(filePath, projectData);
-
-      return {
-        success: true,
-        data: task,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to create task',
-      };
-    }
+    return result;
   },
 };
 
@@ -131,33 +95,8 @@ export const getTaskTool = {
     taskId: z.string().min(1, 'Task ID is required'),
   }),
   async execute(input: { projectId: string; taskId: string }) {
-    try {
-      const projectData = await storage.readProject(input.projectId);
-      if (!projectData) {
-        return {
-          success: false,
-          error: `Project with ID '${input.projectId}' not found`,
-        };
-      }
-
-      const task = projectData.tasks.find((t) => t.id === input.taskId);
-      if (!task) {
-        return {
-          success: false,
-          error: `Task with ID '${input.taskId}' not found in project '${input.projectId}'`,
-        };
-      }
-
-      return {
-        success: true,
-        data: task,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to get task',
-      };
-    }
+    const result = await TaskService.get(input.projectId, input.taskId);
+    return result;
   },
 };
 
@@ -186,66 +125,10 @@ export const updateTaskTool = {
     dueDate?: string | null;
     assignee?: string | null;
   }) {
-    try {
-      const projectData = await storage.readProject(input.projectId);
-      if (!projectData) {
-        return {
-          success: false,
-          error: `Project with ID '${input.projectId}' not found`,
-        };
-      }
+    const { projectId, taskId, ...updateData } = input;
 
-      const taskIndex = projectData.tasks.findIndex((t) => t.id === input.taskId);
-      if (taskIndex === -1) {
-        return {
-          success: false,
-          error: `Task with ID '${input.taskId}' not found in project '${input.projectId}'`,
-        };
-      }
-
-      const { projectId, taskId, ...updateData } = input;
-
-      if (Object.keys(updateData).length === 0) {
-        return {
-          success: false,
-          error: 'At least one field to update is required',
-        };
-      }
-
-      const now = new Date().toISOString();
-      const existingTask = projectData.tasks[taskIndex];
-
-      const updatedTask: Task = {
-        ...existingTask,
-        ...updateData,
-        id: existingTask.id,
-        projectId: existingTask.projectId,
-        createdAt: existingTask.createdAt,
-        updatedAt: now,
-        completedAt: updateData.status === 'done' && existingTask.status !== 'done'
-          ? now
-          : updateData.status && updateData.status !== 'done'
-            ? null
-            : existingTask.completedAt,
-      };
-
-      projectData.tasks[taskIndex] = updatedTask;
-      projectData.project.updatedAt = now;
-
-      const filePath = storage.getFilePath(input.projectId);
-      const { writeJsonFile } = await import('../utils/file-helpers.js');
-      await writeJsonFile(filePath, projectData);
-
-      return {
-        success: true,
-        data: updatedTask,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to update task',
-      };
-    }
+    const result = await TaskService.update(projectId, taskId, updateData);
+    return result;
   },
 };
 
@@ -257,41 +140,17 @@ export const deleteTaskTool = {
     taskId: z.string().min(1, 'Task ID is required'),
   }),
   async execute(input: { projectId: string; taskId: string }) {
-    try {
-      const projectData = await storage.readProject(input.projectId);
-      if (!projectData) {
-        return {
-          success: false,
-          error: `Project with ID '${input.projectId}' not found`,
-        };
-      }
+    const result = await TaskService.delete(input.projectId, input.taskId);
 
-      const taskIndex = projectData.tasks.findIndex((t) => t.id === input.taskId);
-      if (taskIndex === -1) {
-        return {
-          success: false,
-          error: `Task with ID '${input.taskId}' not found in project '${input.projectId}'`,
-        };
-      }
-
-      const now = new Date().toISOString();
-      projectData.tasks.splice(taskIndex, 1);
-      projectData.project.updatedAt = now;
-
-      const filePath = storage.getFilePath(input.projectId);
-      const { writeJsonFile } = await import('../utils/file-helpers.js');
-      await writeJsonFile(filePath, projectData);
-
+    // 保持向后兼容：将 data: undefined 转换为 { deleted: true }
+    if (result.success) {
       return {
         success: true,
         data: { deleted: true },
       };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to delete task',
-      };
     }
+
+    return result;
   },
 };
 
@@ -314,86 +173,13 @@ export const batchUpdateTasksTool = {
     tags?: string[];
     tagOperation?: 'add' | 'remove' | 'replace';
   }) {
-    try {
-      const projectData = await storage.readProject(input.projectId);
-      if (!projectData) {
-        return {
-          success: false,
-          error: `Project with ID '${input.projectId}' not found`,
-        };
-      }
+    const { projectId, taskIds, tagOperation, ...restData } = input;
 
-      const now = new Date().toISOString();
-      const updatedTasks: Task[] = [];
-      const notFoundIds: string[] = [];
+    const result = await TaskService.batchUpdate(projectId, taskIds, {
+      ...restData,
+      tagOperation,
+    });
 
-      for (const taskId of input.taskIds) {
-        const taskIndex = projectData.tasks.findIndex((t) => t.id === taskId);
-        if (taskIndex === -1) {
-          notFoundIds.push(taskId);
-          continue;
-        }
-
-        const existingTask = projectData.tasks[taskIndex];
-        let updatedTags = existingTask.tags;
-
-        if (input.tags && input.tags.length > 0) {
-          const existingTags = existingTask.tags || [];
-          switch (input.tagOperation) {
-            case 'add':
-              updatedTags = [...new Set([...existingTags, ...input.tags])];
-              break;
-            case 'remove':
-              updatedTags = existingTags.filter((tag) => !input.tags!.includes(tag));
-              break;
-            case 'replace':
-            default:
-              updatedTags = input.tags;
-              break;
-          }
-        }
-
-        const updatedTask: Task = {
-          ...existingTask,
-          ...(input.status && { status: input.status }),
-          ...(input.priority && { priority: input.priority }),
-          tags: updatedTags,
-          updatedAt: now,
-          ...(input.status === 'done' && existingTask.status !== 'done' && { completedAt: now }),
-          ...(input.status && input.status !== 'done' && { completedAt: null }),
-        };
-
-        projectData.tasks[taskIndex] = updatedTask;
-        updatedTasks.push(updatedTask);
-      }
-
-      if (updatedTasks.length === 0) {
-        return {
-          success: false,
-          error: 'No tasks were found to update',
-          notFoundIds,
-        };
-      }
-
-      projectData.project.updatedAt = now;
-
-      const filePath = storage.getFilePath(input.projectId);
-      const { writeJsonFile } = await import('../utils/file-helpers.js');
-      await writeJsonFile(filePath, projectData);
-
-      return {
-        success: true,
-        data: {
-          updatedTasks,
-          updatedCount: updatedTasks.length,
-          notFoundIds: notFoundIds.length > 0 ? notFoundIds : undefined,
-        },
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to batch update tasks',
-      };
-    }
+    return result;
   },
 };
