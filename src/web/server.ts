@@ -1,8 +1,12 @@
 import express from 'express';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
 import type { Server } from 'http';
 import { storage } from '../storage/index.js';
 import { TaskService, TagService } from '../services/index.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const tagService = new TagService(storage);
 
@@ -208,7 +212,7 @@ export function createServer(port: number = 7860): Promise<Server> {
       }
     });
 
-    const distPath = path.join(process.cwd(), 'dist', 'web', 'app');
+    const distPath = path.join(__dirname, 'app');
     app.use(express.static(distPath));
 
     app.get('*', (req, res) => {
