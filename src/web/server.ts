@@ -1,12 +1,49 @@
 import express from 'express';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'node:module';
+import { existsSync } from 'node:fs';
 import type { Server } from 'http';
 import { storage } from '../storage/index.js';
 import { TaskService, TagService } from '../services/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+/**
+ * Resolve the path to the web app static files using multiple fallback strategies.
+ * Handles npx execution, global installation, local development, and bundled execution.
+ */
+function resolveAppPath(): string {
+  const candidates: Array<{ path: string; source: string }> = [];
+
+  try {
+    const require = createRequire(import.meta.url);
+    const pkgRoot = path.dirname(require.resolve('../../package.json'));
+    candidates.push({ path: path.join(pkgRoot, 'dist/web/app'), source: 'package.json resolve' });
+  } catch {
+    // Package.json not resolvable
+  }
+
+  candidates.push({ path: path.join(__dirname, 'app'), source: '__dirname relative' });
+  candidates.push({ path: path.join(process.cwd(), 'dist/web/app'), source: 'process.cwd()' });
+  candidates.push({ path: path.join(__dirname, '../web/app'), source: '__dirname/../web/app' });
+
+  for (const { path: candidatePath, source } of candidates) {
+    const indexPath = path.join(candidatePath, 'index.html');
+    if (existsSync(indexPath)) {
+      console.log(`[roadmap-skill] Static files found at: ${candidatePath} (via ${source})`);
+      return candidatePath;
+    }
+  }
+
+  const triedPaths = candidates.map(c => `  - ${c.path} (${c.source})`).join('\n');
+  throw new Error(
+    `Cannot find web app static files.\n\n` +
+    `Tried:\n${triedPaths}\n\n` +
+    `Ensure the package is installed correctly and web assets exist.`
+  );
+}
 
 const tagService = new TagService(storage);
 
@@ -212,7 +249,7 @@ export function createServer(port: number = 7860): Promise<Server> {
       }
     });
 
-    const distPath = path.join(__dirname, 'app');
+    const distPath = resolveAppPath();
     app.use(express.static(distPath));
 
     app.get('*', (req, res) => {
