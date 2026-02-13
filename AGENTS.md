@@ -198,3 +198,23 @@ Before committing, ensure:
 2. `npm run test:unit` passes
 3. Code follows existing patterns in the codebase
 4. Commit message follows Conventional Commits format (in English)
+
+## Release Workflow
+
+This project uses GitHub Actions for automated npm publishing.
+
+### How to Release
+
+1. **Commit your changes** with a Conventional Commit message
+2. **Bump version**: `npm version patch|minor|major` (creates git tag automatically)
+3. **Push commits**: `git push`
+4. **Push tags**: `git push origin vX.X.X` (triggers CI release)
+
+### CI/CD Flow
+
+- On tag push (`v*`), GitHub Actions automatically:
+  1. Runs tests on Node.js 20.x and 22.x
+  2. Builds the project
+  3. Publishes to npm with provenance
+
+**DO NOT run `npm publish` locally** - let CI handle it via `NPM_TOKEN` secret.
