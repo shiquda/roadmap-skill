@@ -25,6 +25,8 @@ function resolveAppPath(): string {
     // Package.json not resolvable
   }
 
+  // Primary path when bundled: __dirname = dist/, so dist/web/app is correct
+  candidates.push({ path: path.join(__dirname, 'web/app'), source: '__dirname/web/app' });
   candidates.push({ path: path.join(__dirname, 'app'), source: '__dirname relative' });
   candidates.push({ path: path.join(process.cwd(), 'dist/web/app'), source: 'process.cwd()' });
   candidates.push({ path: path.join(__dirname, '../web/app'), source: '__dirname/../web/app' });
