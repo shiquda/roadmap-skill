@@ -41,10 +41,7 @@
 ## 零配置快速开始
 
 ```bash
-# 方式一：启动 Web 看板
-npx roadmap-skill-web
-
-# 方式二：集成到你的 AI 助手（MCP 配置如下）
+# 集成到你的 AI 助手（MCP 配置如下）
 ```
 
 <details>
@@ -321,7 +318,6 @@ npm install -g roadmap-skill
 ### 免安装使用
 
 ```bash
-npx roadmap-skill-web      # 仅启动 Web 看板
 npx roadmap-skill          # 完整 MCP 服务器
 ```
 

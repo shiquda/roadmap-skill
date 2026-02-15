@@ -41,10 +41,7 @@
 ## Quick Start (Zero Config)
 
 ```bash
-# Option 1: Launch Web Kanban
-npx roadmap-skill-web
-
-# Option 2: Integrate with your AI assistant (MCP config below)
+# Integrate with your AI assistant (MCP config below)
 ```
 
 <details>
@@ -321,7 +318,6 @@ npm install -g roadmap-skill
 ### Use Without Installing
 
 ```bash
-npx roadmap-skill-web      # Web Kanban only
 npx roadmap-skill          # Full MCP server
 ```
 
