@@ -243,6 +243,31 @@ Follow Windsurf MCP documentation and use:
 
 </details>
 
+<details>
+<summary><b>Codex CLI / Codex IDE</b></summary>
+
+**One-liner (recommended):**
+
+```bash
+codex mcp add roadmap -- npx -y roadmap-skill
+```
+
+**Manual config** — edit `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.roadmap]
+command = "npx"
+args = ["-y", "roadmap-skill"]
+```
+
+> **Windows**: No `cmd /c` wrapper needed — Codex handles the subprocess directly.
+
+> **Server name**: Must match `^[a-zA-Z0-9_-]+$`. Names with spaces or parentheses are rejected.
+
+> **Note**: Both Codex CLI and the Codex VSCode extension share the same `~/.codex/config.toml`. A syntax error breaks both.
+
+</details>
+
 </details>
 
 <br>

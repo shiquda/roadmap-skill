@@ -242,6 +242,28 @@ Follow Windsurf MCP documentation and use:
 ```
 
 </details>
+<details>
+<summary><b>Codex CLI / Codex IDE</b></summary>
+
+**一键安装（推荐）：**
+
+```bash
+codex mcp add roadmap -- npx -y roadmap-skill
+```
+
+**手动配置** — 编辑 `~/.codex/config.toml`：
+
+```toml
+[mcp_servers.roadmap]
+command = "npx"
+args = ["-y", "roadmap-skill"]
+```
+
+> **Windows**：无需 `cmd /c` 包装 — Codex 会直接管理子进程。
+> **服务器名称**：必须匹配 `^[a-zA-Z0-9_-]+$`，含空格或括号的名称会被拒绝。
+> **注意**：Codex CLI 和 Codex VSCode 扩展共享同一个 `~/.codex/config.toml`，语法错误会同时影响两者。
+
+</details>
 
 </details>
 
