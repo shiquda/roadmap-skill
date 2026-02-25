@@ -127,10 +127,18 @@ export function createServer(): Server {
 						},
 					],
 				};
-			} catch (error) {
+      } catch (error) {
 				const errorMessage =
 					error instanceof Error ? error.message : String(error);
-				throw new Error(`Tool execution failed: ${errorMessage}`);
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: `Tool execution failed: ${errorMessage}`,
+						},
+					],
+					isError: true,
+				};
 			}
 		},
 	);

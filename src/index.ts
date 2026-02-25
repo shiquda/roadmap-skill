@@ -13,12 +13,12 @@ async function main() {
 
   process.on('uncaughtException', (error) => {
     console.error('Uncaught exception:', error);
-    process.exit(1);
+    // Do not exit — keep MCP stdio transport alive
   });
 
   process.on('unhandledRejection', (reason) => {
     console.error('Unhandled rejection:', reason);
-    process.exit(1);
+    // Do not exit — keep MCP stdio transport alive
   });
 
   try {

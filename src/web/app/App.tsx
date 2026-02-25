@@ -170,7 +170,12 @@ const App: React.FC = () => {
         .then(res => res.json())
         .then(data => {
           if (data.success) {
-            setTags(data.data);
+            const tagList = data.data as Tag[];
+            const taskTagCounts = new Map<string, number>();
+            tasks.forEach(({ task }) => {
+              (task.tags || []).forEach(id => taskTagCounts.set(id, (taskTagCounts.get(id) ?? 0) + 1));
+            });
+            setTags(tagList.map(t => ({ ...t, taskCount: taskTagCounts.get(t.id) ?? 0 })));
           }
         });
     } else {
@@ -680,7 +685,8 @@ const App: React.FC = () => {
           <div className="mt-8 pt-6 border-t border-slate-200/50 space-y-3">
             <button
               onClick={() => setIsTagManagerOpen(true)}
-              className="w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-white/50 rounded-xl transition-all group"
+              disabled={!selectedProject}
+              className="w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-white/50 rounded-xl transition-all group disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <span className="text-lg group-hover:scale-125 transition-transform">🏷️</span>
               <span>Manage Tags</span>

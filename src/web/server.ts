@@ -34,7 +34,7 @@ function resolveAppPath(): string {
   for (const { path: candidatePath, source } of candidates) {
     const indexPath = path.join(candidatePath, 'index.html');
     if (existsSync(indexPath)) {
-      console.log(`[roadmap-skill] Static files found at: ${candidatePath} (via ${source})`);
+      console.error(`[roadmap-skill] Static files found at: ${candidatePath} (via ${source})`);
       return candidatePath;
     }
   }
@@ -265,7 +265,7 @@ export function createServer(port: number = 7860): Promise<Server> {
     const server = app.listen(port, '127.0.0.1');
 
     server.once('listening', () => {
-      console.log(`Web interface server running at http://localhost:${port}`);
+      console.error(`Web interface server running at http://localhost:${port}`);
       resolve(server);
     });
 

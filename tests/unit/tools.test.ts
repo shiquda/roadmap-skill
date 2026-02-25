@@ -438,6 +438,49 @@ describe('Tools', () => {
         expect(result.data.updatedTasks[0].tags).toContain('new-tag');
       });
 
+      it('should remove tags with remove operation', async () => {
+        const project = await createTestProject('Test Project');
+        const task = await createTestTask(project.project.id, 'Task');
+        await batchUpdateTasksTool.execute({
+          projectId: project.project.id,
+          taskIds: [task.id],
+          tags: ['tag-a', 'tag-b'],
+          tagOperation: 'replace',
+        });
+
+        const result = await batchUpdateTasksTool.execute({
+          projectId: project.project.id,
+          taskIds: [task.id],
+          tags: ['tag-a'],
+          tagOperation: 'remove',
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.updatedTasks[0].tags).not.toContain('tag-a');
+        expect(result.data.updatedTasks[0].tags).toContain('tag-b');
+      });
+
+      it('should replace tags with replace operation', async () => {
+        const project = await createTestProject('Test Project');
+        const task = await createTestTask(project.project.id, 'Task');
+        await batchUpdateTasksTool.execute({
+          projectId: project.project.id,
+          taskIds: [task.id],
+          tags: ['old-tag'],
+          tagOperation: 'replace',
+        });
+
+        const result = await batchUpdateTasksTool.execute({
+          projectId: project.project.id,
+          taskIds: [task.id],
+          tags: ['new-tag'],
+          tagOperation: 'replace',
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.updatedTasks[0].tags).toEqual(['new-tag']);
+      });
+
       it('should handle tasks with undefined tags', async () => {
         const project = await createTestProject('Test Project');
         // Create a task manually with undefined tags to simulate legacy data

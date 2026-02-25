@@ -96,7 +96,10 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
         method: 'DELETE',
       });
       if (response.ok) {
-        onTagsChange(tags.filter(t => t.id !== tagId));
+        const result = await response.json();
+        if (result.success) {
+          onTagsChange(tags.filter(t => t.id !== tagId));
+        }
       }
     } catch (error) {
       console.error('Failed to delete tag:', error);

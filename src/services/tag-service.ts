@@ -103,9 +103,19 @@ export class TagService {
         };
       }
 
+      const taskTagCounts = new Map<string, number>();
+      for (const task of projectData.tasks) {
+        for (const tagId of task.tags) {
+          taskTagCounts.set(tagId, (taskTagCounts.get(tagId) ?? 0) + 1);
+        }
+      }
+
       return {
         success: true,
-        data: projectData.tags,
+        data: projectData.tags.map((tag) => ({
+          ...tag,
+          taskCount: taskTagCounts.get(tag.id) ?? 0,
+        })),
       };
     } catch (error) {
       return {
