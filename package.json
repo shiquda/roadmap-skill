@@ -9,6 +9,10 @@
     "build": "tsup && npm run build:web",
     "build:web": "vite build",
     "dev": "tsup --watch",
+    "dev:web": "vite --port 7861",
+    "dev:server": "node dist/web/server.js 7863",
+    "dev:full": "npm run build && concurrently \"npm run dev:server\" \"npm run dev:web\"",
+    "inspector": "npm run build && npx -y @modelcontextprotocol/inspector node dist/index.js",
     "test": "vitest",
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
@@ -55,7 +59,8 @@
     "tsup": "^8.0.1",
     "typescript": "^5.3.3",
     "vite": "^7.3.1",
-    "vitest": "^1.1.0"
+    "vitest": "^1.1.0",
+    "concurrently": "^9.0.0"
   },
   "engines": {
     "node": ">=20.0.0"
