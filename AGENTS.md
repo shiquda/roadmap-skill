@@ -203,12 +203,55 @@ Before committing, ensure:
 
 This project uses GitHub Actions for automated npm publishing.
 
+### Version Numbering
+
+Follow [Semantic Versioning](https://semver.org/):
+- `MAJOR.MINOR.PATCH`
+- **MAJOR**: Breaking changes
+- **MINOR**: New features (backward compatible)
+- **PATCH**: Bug fixes
+
+### Pre-release Checklist
+
+Before releasing a new version, ensure:
+
+1. **Update CHANGELOG**
+   - View changes since last tag: `git log v0.2.8..HEAD --oneline`
+   - Add new version section at the TOP of CHANGELOG.md
+   - Categorize changes: Added / Changed / Fixed / Removed
+   - Format: `## [0.2.9] - 2026-02-26`
+
+2. **Run tests**
+   ```bash
+   npm run typecheck
+   npm run test:unit
+   ```
+
+3. **Build verification**
+   ```bash
+   npm run build
+   ```
+
+4. **Commit CHANGELOG update**
+   ```bash
+   git add CHANGELOG.md
+   git commit -m "docs: update changelog for v0.2.9"
+   ```
+
 ### How to Release
 
-1. **Commit your changes** with a Conventional Commit message
-2. **Bump version**: `npm version patch|minor|major` (creates git tag automatically)
-3. **Push commits**: `git push`
-4. **Push tags**: `git push origin vX.X.X` (triggers CI release)
+1. **Bump version** (creates git tag automatically):
+   ```bash
+   npm version patch   # or minor / major
+   ```
+
+2. **Push commits and tag**:
+   ```bash
+   git push
+   git push origin v0.2.9
+   ```
+
+3. **CI automatically publishes** to npm registry
 
 ### CI/CD Flow
 
@@ -218,3 +261,21 @@ This project uses GitHub Actions for automated npm publishing.
   3. Publishes to npm with provenance
 
 **DO NOT run `npm publish` locally** - let CI handle it via `NPM_TOKEN` secret.
+
+### Development Commands
+
+```bash
+# Development
+npm run dev:web        # Frontend dev server (port 7861, with HMR)
+npm run dev:server     # Backend server (port 7863)
+npm run dev:full       # Start both frontend and backend
+
+# Debug
+npm run inspector      # Launch MCP Inspector for debugging
+
+# Build & Test
+npm run build          # Full build
+npm run typecheck      # TypeScript check
+npm run test:unit      # Unit tests
+```
+
