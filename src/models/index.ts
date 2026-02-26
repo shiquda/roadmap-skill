@@ -126,3 +126,24 @@ export interface CreateMilestoneInput {
   description: string;
   targetDate: string;
 }
+
+
+// Summary types for compact tool responses (verbose=false)
+export interface TaskSummary {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  dueDate: string | null;
+  assignee: string | null;
+  tags: string[];
+}
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  projectType: ProjectType;
+  status: ProjectStatus;
+  targetDate: string;
+  taskCount: number;
+}
