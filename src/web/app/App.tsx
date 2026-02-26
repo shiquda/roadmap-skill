@@ -145,9 +145,16 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const url = selectedProject 
-      ? `/api/tasks?projectId=${selectedProject}`
-      : '/api/tasks';
+    const params = new URLSearchParams();
+    if (selectedProject) {
+      params.append('projectId', selectedProject);
+    }
+    // Include completed tasks when showing all or completed filter
+    if (statusFilter === 'all' || statusFilter === 'completed') {
+      params.append('includeCompleted', 'true');
+    }
+    const queryString = params.toString();
+    const url = `/api/tasks${queryString ? `?${queryString}` : ''}`;
     
     fetch(url)
       .then(res => res.json())
@@ -162,7 +169,7 @@ const App: React.FC = () => {
         }));
         setTasks(normalized);
       });
-  }, [selectedProject]);
+  }, [selectedProject, statusFilter]);
 
   useEffect(() => {
     if (selectedProject) {
@@ -544,49 +551,47 @@ const App: React.FC = () => {
         className={`bg-white rounded-2xl border border-slate-100/50 cursor-move transition-all duration-300 ease-out group flex flex-col ${
           isDragging
             ? 'shadow-2xl scale-105 border-emerald-400 rotate-1 z-10'
-            : 'shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-emerald-100'
+            : 'shadow-sm hover:shadow-lg hover:-translate-y-0.5 hover:border-emerald-100'
         } ${
-          cardMode === 'compact' ? 'p-4' : 'p-5'
+          cardMode === 'compact' ? 'p-3' : 'p-5'
         }`}
       >
-        <div className="flex justify-between items-start mb-3">
+        <div className={`flex justify-between items-start mb-1`}>
           <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg ${priority.bgColor} ${priority.color} border border-current opacity-80`}>
             {priority.label}
           </span>
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+          <div className={`flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all ${cardMode === 'compact' ? 'scale-90' : ''}`}>
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 handleEditTask(task);
               }}
-              className="p-1.5 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 rounded-lg transition-all"
+              className={`text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 rounded transition-all ${cardMode === 'compact' ? 'p-1' : 'p-1.5'}`}
               title="Edit"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+              <svg className={cardMode === 'compact' ? 'w-3 h-3' : 'w-4 h-4'} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
             </button>
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 handleDeleteTask(task.id, project.id);
               }}
-              className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+              className={`text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded transition-all ${cardMode === 'compact' ? 'p-1' : 'p-1.5'}`}
               title="Delete"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-4v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+              <svg className={cardMode === 'compact' ? 'w-3 h-3' : 'w-4 h-4'} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-4v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
             </button>
           </div>
         </div>
         <h3
           onClick={() => handleEditTask(task)}
-          className={`text-slate-800 font-bold cursor-pointer leading-tight hover:text-emerald-500 transition-colors ${
-            cardMode === 'compact' ? 'text-sm line-clamp-2' : 'text-base line-clamp-2 mb-2'
-          }`}
+          className={`text-slate-800 font-bold cursor-pointer leading-tight hover:text-emerald-500 transition-colors line-clamp-2 ${cardMode === 'compact' ? 'text-sm' : 'text-base'}`}
         >
           {task.title}
         </h3>
         
-        {task.tags && task.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-3 mb-1">
+        {cardMode === 'detailed' && task.tags && task.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-2 mb-0.5">
             {task.tags.map(tagId => {
               const tag = tags.find(t => t.id === tagId);
               return tag ? (
@@ -602,7 +607,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-50">
+        <div className="flex items-center justify-between mt-1 pt-1 border-t border-slate-50">
           <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter truncate max-w-[100px]">{project.name}</span>
           {task.dueDate && (
             <div className="flex items-center gap-1 text-[10px] text-slate-400 font-bold">
@@ -622,13 +627,73 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-emerald-50/50 p-8">
-      <header className="mb-10 flex justify-between items-end">
-        <div>
-          <h1 className="text-5xl font-extrabold text-slate-900 tracking-tightest">
+    <div className="min-h-screen bg-emerald-50/50 p-6">
+      <header className="mb-6 flex justify-between items-center">
+        <div className="leading-none">
+          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
             Nova<span className="text-emerald-500">Board</span>
           </h1>
-          <p className="text-slate-500 mt-3 font-medium text-lg italic">Visual task & project management</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="flex bg-slate-200/50 rounded-xl p-1">
+            <button
+              onClick={() => setCardMode('compact')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                cardMode === 'compact'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Compact
+            </button>
+            <button
+              onClick={() => setCardMode('detailed')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                cardMode === 'detailed'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Detailed
+            </button>
+          </div>
+          {tags.length > 0 && (
+            <>
+              <div className="h-5 w-px bg-slate-300" />
+              <TagFilter
+                tags={tags}
+                selectedTags={selectedTagIds}
+                onChange={setSelectedTagIds}
+              />
+            </>
+          )}
+          <div className="h-5 w-px bg-slate-300" />
+          <div className="flex bg-slate-200/50 rounded-xl p-1">
+            {(['all', 'active', 'completed'] as StatusFilter[]).map(f => (
+              <button
+                key={f}
+                onClick={() => setStatusFilter(f)}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all capitalize ${
+                  statusFilter === f
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+          <div className="h-5 w-px bg-slate-300" />
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
+            <input
+              type="text"
+              value={searchKeyword}
+              onChange={(e) => setSearchKeyword(e.target.value)}
+              placeholder="Search..."
+              className="pl-8 pr-3 py-1.5 text-sm bg-white/50 border border-transparent rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all w-40 shadow-inner"
+            />
+          </div>
         </div>
       </header>
 
@@ -644,7 +709,7 @@ const App: React.FC = () => {
               <span className="text-lg">+</span>
             </button>
           </div>
-          <div className="space-y-3">
+          <div className="space-y-1.5">
             <button
               onClick={() => setSelectedProject(null)}
               className={`w-full text-left px-4 py-3 rounded-xl transition-all duration-300 ${!selectedProject ? 'bg-white shadow-md ring-1 ring-slate-100 text-slate-900 font-bold' : 'text-slate-500 hover:bg-white/50 hover:text-slate-800'}`}
@@ -748,87 +813,8 @@ const App: React.FC = () => {
               </button>
             </div>
           )}
-          <div className="flex flex-wrap items-center gap-6 mb-8 bg-white/40 backdrop-blur-md p-4 rounded-2xl border border-white/50 shadow-sm">
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-bold uppercase tracking-widest text-slate-400">View</span>
-              <div className="flex bg-slate-200/50 rounded-xl p-1">
-                <button
-                  onClick={() => setCardMode('compact')}
-                  className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                    cardMode === 'compact'
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  Compact
-                </button>
-                <button
-                  onClick={() => setCardMode('detailed')}
-                  className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                    cardMode === 'detailed'
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  Detailed
-                </button>
-              </div>
-            </div>
-
-            <div className="h-6 w-px bg-slate-200/50 hidden md:block" />
-
-            <div className="flex items-center gap-3 flex-1 min-w-[200px]">
-              <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Tags</span>
-              {tags.length > 0 ? (
-                <TagFilter
-                  tags={tags}
-                  selectedTags={selectedTagIds}
-                  onChange={setSelectedTagIds}
-                />
-              ) : (
-                <span className="text-xs text-slate-400 italic">No tags defined</span>
-              )}
-            </div>
-
-            <div className="h-6 w-px bg-slate-200/50 hidden md:block" />
-
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Status</span>
-              <div className="flex bg-slate-200/50 rounded-xl p-1">
-                {(['all', 'active', 'completed'] as StatusFilter[]).map(f => (
-                  <button
-                    key={f}
-                    onClick={() => setStatusFilter(f)}
-                    className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all capitalize ${
-                      statusFilter === f
-                        ? 'bg-white text-slate-900 shadow-sm'
-                        : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                  >
-                    {f}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="h-6 w-px bg-slate-200/50 hidden md:block" />
-
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
-                <input
-                  type="text"
-                  value={searchKeyword}
-                  onChange={(e) => setSearchKeyword(e.target.value)}
-                  placeholder="Search tasks..."
-                  className="pl-9 pr-4 py-2 text-sm bg-white/50 border border-transparent rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all w-48 shadow-inner"
-                />
-              </div>
-            </div>
-
-            <div className="text-xs font-bold text-slate-400 bg-slate-100 px-3 py-1.5 rounded-full ml-auto">
-              {filteredTasks.length} {filteredTasks.length === 1 ? 'Task' : 'Tasks'}
-            </div>
+          <div className="mb-4 text-xs font-bold text-slate-400">
+            {filteredTasks.length} {filteredTasks.length === 1 ? 'Task' : 'Tasks'}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -863,15 +849,15 @@ const App: React.FC = () => {
                           setNewTaskForm({ title: '', description: '', priority: 'medium', dueDate: '', showDueDate: false, tags: [] });
                           setIsCreateTaskModalOpen(true);
                         }}
-                      className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-emerald-500 hover:bg-white rounded-xl transition-all shadow-sm hover:shadow-md active:scale-90"
+                      className="w-8 h-8 flex items-center justify-center text-emerald-500 hover:text-emerald-600 hover:bg-white rounded-xl transition-all shadow-sm hover:shadow-md active:scale-90"
                     >
-                      <span className="text-xl">+</span>
+                      <span className="text-xl font-bold">+</span>
                     </button>
                   </div>
 
 
 
-                  <div className="space-y-3 transition-all duration-300">
+                  <div className="space-y-2 transition-all duration-300">
                     {columnTasks.map((taskItem, index) => (
                       <div
                         key={taskItem.task.id}
