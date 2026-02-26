@@ -10,6 +10,15 @@ export default defineConfig({
   plugins: [react()],
   root: resolve(__dirname, 'src/web/app'),
   base: './',
+  server: {
+    port: 7861,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:7863',
+        changeOrigin: true,
+      },
+    },
+  },
   build: {
     outDir: resolve(__dirname, 'dist/web/app'),
     emptyOutDir: true,
