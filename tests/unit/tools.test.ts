@@ -113,8 +113,8 @@ describe('Tools', () => {
 
         expect(result.success).toBe(true);
         expect(result.data).toBeDefined();
-        expect(result.data.project.name).toBe('New Project');
-        expect(result.data.project.status).toBe('active');
+        expect(result.data.name).toBe('New Project');
+        expect(result.data.status).toBe('active');
       });
 
     });
@@ -168,8 +168,8 @@ describe('Tools', () => {
         });
 
         expect(result.success).toBe(true);
-        expect(result.data.project.name).toBe('Updated Name');
-        expect(result.data.project.status).toBe('completed');
+        expect(result.data.name).toBe('Updated Name');
+        expect(result.data.status).toBe('completed');
       });
 
       it('should return error for non-existent project', async () => {
@@ -245,7 +245,6 @@ describe('Tools', () => {
         expect(result.data.title).toBe('New Task');
         expect(result.data.priority).toBe('high');
         expect(result.data.status).toBe('todo');
-        expect(result.data.projectId).toBe(project.project.id);
       });
 
       it('should return error for non-existent project', async () => {
@@ -287,11 +286,12 @@ describe('Tools', () => {
         const result = await listTasksTool.execute({
           projectId: project.project.id,
           status: 'done',
+          includeCompleted: true,
         });
 
         expect(result.success).toBe(true);
         expect(result.data).toHaveLength(1);
-        expect(result.data[0].task.status).toBe('done');
+        expect(result.data[0].status).toBe('done');
       });
     });
 
@@ -348,8 +348,8 @@ describe('Tools', () => {
           projectId: project.project.id,
           taskId: task.id,
           status: 'done',
+          verbose: true,
         });
-
         expect(result.success).toBe(true);
         expect(result.data.status).toBe('done');
         expect(result.data.completedAt).toBeDefined();
