@@ -231,8 +231,8 @@ export class ProjectStorage {
             continue;
           }
 
-          // Filter completed tasks (done status) when includeCompleted is false
-          if (filters.includeCompleted === false && task.status === 'done') {
+          // Filter completed tasks (done status) unless includeCompleted is explicitly true
+          if (filters.includeCompleted !== true && task.status === 'done') {
             continue;
           }
 

@@ -41,7 +41,7 @@ export const createTaskTool = {
 
 export const listTasksTool = {
   name: 'list_tasks',
-  description: 'List tasks with optional filters',
+  description: 'List tasks with optional filters. By default, completed (done) tasks are excluded. Set includeCompleted=true to include them.',
   inputSchema: z.object({
     projectId: z.string().optional(),
     status: TaskStatusEnum.optional(),
