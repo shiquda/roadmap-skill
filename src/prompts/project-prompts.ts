@@ -8,12 +8,12 @@ import type {
  */
 export const projectPrompts: Prompt[] = [
   {
-    name: 'recommendNextTasks',
+    name: 'suggest-tasks',
     description: 'Intelligently recommend the next priority tasks based on urgency, due dates, and project status',
     arguments: [
       {
         name: 'projectId',
-        description: 'Specific project ID (optional; if not provided, analyze all projects)',
+        description: 'Specific project ID (optional; if not provided, auto-detect from current context or analyze all projects)',
         required: false,
       },
       {
@@ -24,19 +24,19 @@ export const projectPrompts: Prompt[] = [
     ],
   },
   {
-    name: 'autoPrioritize',
+    name: 'auto-prioritize',
     description: 'Automatically analyze tasks and intelligently adjust priorities, considering due dates, dependencies, and project importance',
     arguments: [
       {
         name: 'projectId',
-        description: 'Specific project ID (optional; if not provided, analyze all projects)',
+        description: 'Specific project ID (optional; if not provided, auto-detect from current context or analyze all projects)',
         required: false,
       },
     ],
   },
   {
-    name: 'enhanceTaskDetails',
-        description: 'Intelligently enhance task details, including description, acceptance criteria, subtasks, and required resources',
+    name: 'add-task-details',
+    description: 'Intelligently enhance task details, including description, acceptance criteria, subtasks, and required resources',
     arguments: [
       {
         name: 'taskId',
@@ -46,7 +46,7 @@ export const projectPrompts: Prompt[] = [
     ],
   },
   {
-    name: 'quickCapture',
+    name: 'quick-capture',
     description: 'Quickly capture ideas/tasks, auto-categorize and suggest priorities',
     arguments: [
       {
@@ -56,7 +56,18 @@ export const projectPrompts: Prompt[] = [
       },
       {
         name: 'projectId',
-        description: 'Target project ID (optional)',
+        description: 'Target project ID (optional; if not provided, auto-detect from current context)',
+        required: false,
+      },
+    ],
+  },
+  {
+    name: 'open-web-ui',
+    description: 'Open the web visualization interface for the roadmap skill',
+    arguments: [
+      {
+        name: 'port',
+        description: 'Port to run the web interface on (optional, default: 7860)',
         required: false,
       },
     ],
@@ -68,10 +79,9 @@ export const projectPrompts: Prompt[] = [
  * Analyze all tasks and recommend optimal execution order based on priority, due dates, and dependencies
  */
 export function getRecommendNextTasksPrompt(projectId?: string, limit?: string): GetPromptResult {
-  const context = projectId
-    ? `Analyze tasks for project ${projectId}`
-    : 'Analyze tasks for all active projects';
-
+  const projectHint = projectId
+    ? `User specified project: ${projectId}. Use this project if it exists, or inform user if not found.`
+    : 'User did not specify a project. Based on the current working directory and conversation context, try to identify the most relevant project. If a clear match exists, focus on that project; otherwise, analyze all active projects';
   const taskLimit = limit ? parseInt(limit, 10) : 3;
 
   return {
@@ -81,7 +91,7 @@ export function getRecommendNextTasksPrompt(projectId?: string, limit?: string):
         role: 'user',
         content: {
           type: 'text',
-          text: `${context}, please recommend the ${taskLimit} tasks I should prioritize next.
+          text: `${projectHint}, please recommend the ${taskLimit} tasks I should prioritize next.
 
 ## Recommendation Logic (sorted by priority):
 
@@ -146,9 +156,9 @@ Keep task status synchronized with actual progress!`,
  * Automatically adjust priorities based on due dates, project progress, and task dependencies
  */
 export function getAutoPrioritizePrompt(projectId?: string): GetPromptResult {
-  const context = projectId
-    ? `Analyze task priorities for project ${projectId}`
-    : 'Analyze task priorities for all projects';
+  const projectHint = projectId
+    ? `User specified project: ${projectId}. Use this project if it exists, or inform user if not found.`
+    : 'User did not specify a project. Based on the current working directory and conversation context, try to identify the most relevant project. If a clear match exists, focus on that project; otherwise, analyze all active projects';
 
   return {
     description: 'Intelligent Priority Optimization Assistant',
@@ -157,7 +167,7 @@ export function getAutoPrioritizePrompt(projectId?: string): GetPromptResult {
         role: 'user',
         content: {
           type: 'text',
-          text: `${context}, please automatically analyze and suggest priority adjustments.
+          text: `${projectHint}, please automatically analyze and adjust priorities.
 
 ## Priority Adjustment Rules:
 
@@ -191,7 +201,7 @@ export function getAutoPrioritizePrompt(projectId?: string): GetPromptResult {
    - Identify task dependency relationships
    - Evaluate overall project health
 3. **Generate adjustment suggestions**: List tasks needing priority changes with reasons
-4. **Batch update**: Use batch_update_tasks to execute priority adjustments
+4. **Batch update**: Use batch_update_tasks to execute priority adjustments immediately — no confirmation needed
 
 ## Output Format:
 
@@ -213,7 +223,7 @@ export function getAutoPrioritizePrompt(projectId?: string): GetPromptResult {
 ### Keep Unchanged (Priorities are reasonable)
 - List tasks with reasonable priority settings
 
-Please provide analysis results, then execute batch update after user confirmation.`,
+Please provide analysis results and immediately execute batch_update_tasks to apply the priority adjustments — no confirmation needed.`,
         },
       },
     ],
@@ -273,7 +283,7 @@ If the task is complex, suggest breaking it down:
    - If design task: Add design specs, review criteria
    - If documentation task: Add doc structure, references
    - If testing task: Add test scenarios, coverage scope
-4. **Generate enhancement content**: Use update_task to update task description
+4. **Apply enhancement**: Use update_task to update task description immediately — no confirmation needed
 
 ## Updated task should include:
 
@@ -296,7 +306,7 @@ If the task is complex, suggest breaking it down:
 - References: [link]
 \`\`\`
 
-Please fetch task info first, then provide detailed enhancement suggestions.`,
+Please fetch task info and immediately use update_task to apply the enhanced details — no confirmation needed.`,
         },
       },
     ],
@@ -309,8 +319,8 @@ Please fetch task info first, then provide detailed enhancement suggestions.`,
  */
 export function getQuickCapturePrompt(idea: string, projectId?: string): GetPromptResult {
   const projectContext = projectId
-    ? `Add to project ${projectId}`
-    : 'Auto-select the most suitable project';
+    ? `User specified project: ${projectId}. Use this project if it exists, or inform user if not found.`
+    : 'User did not specify a project. Based on the current working directory and conversation context, try to identify the most relevant project. If a clear match exists, use that project; otherwise, analyze all active projects and select the best match';
 
   return {
     description: 'Quick Capture Assistant',
@@ -323,7 +333,7 @@ export function getQuickCapturePrompt(idea: string, projectId?: string): GetProm
 
 ${projectContext}
 
-## Please help me complete the following steps:
+## Please complete the following steps immediately:
 
 ### 1. Task Information Extraction
 Extract from description:
@@ -332,11 +342,10 @@ Extract from description:
 - **Task Type**: bug / feature / refactor / docs / chore
 - **Estimated Priority**: critical / high / medium / low (based on urgency in description)
 
-### 2. Project Recommendation (if no project specified)
-If user didn't specify a project, please:
+### 2. Project Selection (if no project specified)
 - List all active projects
 - Analyze which project the task content is most relevant to
-- Recommend the most suitable project
+- Select the most suitable project automatically
 
 ### 3. Tag Suggestions
 Suggest relevant tags:
@@ -344,11 +353,11 @@ Suggest relevant tags:
 - Priority tags: urgent, important
 - Domain tags: frontend, backend, design, testing (if applicable)
 
-### 4. Generate Task
-Use create_task to create the task
+### 4. Create Task
+Use create_task to create the task immediately — no confirmation needed.
 
-### 5. Status Recommendation
-After creating the task, if you start working on it immediately, consider setting the status to in-progress. Use update_task to keep progress updated during work, and mark as done when completed.
+### 5. Status
+After creating, if work starts immediately, use update_task to set status to in-progress.
 
 ## Example:
 
@@ -362,11 +371,31 @@ After creating the task, if you start working on it immediately, consider settin
 - Suggested Tags: bug, frontend, mobile
 - Recommended Project: [Recommend if there's a web project]
 
-## Current Idea Analysis:
+## Current Idea:
 
 Idea: "${idea}"
 
-Please analyze and generate task suggestions. After user confirmation, execute create_task to create the task.`,
+Analyze the idea, select the best matching project, and immediately execute create_task — no confirmation needed.`,
+        },
+      },
+    ],
+  };
+}
+
+/**
+ * Open Web UI
+ * Launch the web visualization interface
+ */
+export function getOpenWebUIPrompt(port?: string): GetPromptResult {
+  const portNum = port ? parseInt(port, 10) : 7860;
+  return {
+    description: 'Open Web Visualization Interface',
+    messages: [
+      {
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `Please open the roadmap-skill web interface by calling the open_web_interface tool with port ${portNum}. Do it immediately without asking for confirmation.`,
         },
       },
     ],
@@ -378,14 +407,16 @@ Please analyze and generate task suggestions. After user confirmation, execute c
  */
 export function getPromptByName(name: string, args?: Record<string, string>): GetPromptResult | null {
   switch (name) {
-    case 'recommendNextTasks':
+    case 'suggest-tasks':
       return getRecommendNextTasksPrompt(args?.projectId, args?.limit);
-    case 'autoPrioritize':
+    case 'auto-prioritize':
       return getAutoPrioritizePrompt(args?.projectId);
-    case 'enhanceTaskDetails':
+    case 'add-task-details':
       return getEnhanceTaskDetailsPrompt(args?.taskId || '');
-    case 'quickCapture':
+    case 'quick-capture':
       return getQuickCapturePrompt(args?.idea || '', args?.projectId);
+    case 'open-web-ui':
+      return getOpenWebUIPrompt(args?.port);
     default:
       return null;
   }
