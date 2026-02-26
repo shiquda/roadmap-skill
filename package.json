@@ -1,6 +1,6 @@
 {
   "name": "roadmap-skill",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "A MCP server for project roadmap management with task tracking, tagging, and web visualization",
   "type": "module",
   "main": "dist/index.js",
