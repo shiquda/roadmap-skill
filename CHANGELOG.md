@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.10] - 2026-02-27
+
+### Added
+- **Contributing Section**: Added Contributing section to README (en/zh)
+
+### Changed
+- **README**: Revamped copy for both en/zh versions, improved clarity and tone
+- **Tag ID Workflow**: Unified tag-id handling with deterministic color fallback
+
+
 ## [0.2.9] - 2026-02-26
 
 ### Added
