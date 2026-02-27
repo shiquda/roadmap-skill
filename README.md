@@ -290,28 +290,25 @@ Solo developers, AI power users, and vibe coders who want their Agent to be a re
 
 ### 1. Capture Ideas Without Breaking Flow
 
-Mid-session, something comes to mind:
+Mid-session, something pops into your head:
 
 > "Note this down: switch the auth module to JWT + refresh token rotation"
 
-Your Agent creates the task. You stay in flow. Open the Kanban later to review.
+Use `/quick-capture` or just say "help me note this down" — your Agent turns it into a task, saves it locally, and you keep going. No context switch, no forgotten ideas.
 
-### 2. Let AI Bootstrap Your Project Plan
+### 2. Let Agent Help You Prioritize
 
-Starting something new:
+> "This month's OKR is finishing the user system refactor — can you list the related tasks and figure out which ones should come first?"
 
-> "Set up a project for the admin dashboard — product management, orders, and user permissions. Break each into tasks."
+Use `/auto-prioritize` to let your Agent analyze the current project state and reorder task priorities accordingly.
 
-Agent scaffolds the whole structure. You open the board and start dragging.
+### 3. Let Agent Recommend What to Do Next
 
-### 3. Check In Without Leaving the Chat
+> "What's left on the current project? Any high-priority tasks I haven't touched yet?"
 
-> "What's left on the current project? Anything high priority I haven't touched?"
-
-> "Mark the login feature done and add a task for writing tests."
+Or use `/suggest-tasks` — your Agent recommends the next actions based on current progress and priorities.
 
 No tab switching. No copy-pasting. Just ask.
-
 ---
 
 ## Core Features
@@ -328,10 +325,8 @@ No tab switching. No copy-pasting. Just ask.
 
 ## Supported Platforms
 
-- ✅ **Claude Code** — Command-line AI assistant
-- ✅ **Claude Desktop** — Full MCP integration
-- ✅ **Cursor** — AI-powered IDE
-- ✅ **VS Code** — Via Cline or Roo Code extensions
+- ✅ **Claude Code, Codex, OpenCode** — Command-line AI assistants
+- ✅ **Cursor, VS Code** — AI-powered IDEs
 - ✅ **Any MCP Client** — Standard MCP protocol support
 
 ---
@@ -342,24 +337,11 @@ Roadmap Skill uses **pure local JSON file storage**. All data is saved in your u
 
 | Platform | Storage Path |
 |---------|-------------|
-| macOS | `~/.roadmap-skill/data/` |
-| Linux | `~/.roadmap-skill/data/` |
-| Windows | `%USERPROFILE%\.roadmap-skill\data\` |
+| Windows | `%USERPROFILE%\.roadmap-skill` |
+| macOS | `~/.roadmap-skill/` |
+| Linux | `~/.roadmap-skill/` |
 
-### Data File Structure
-
-```
-.roadmap-skill/
-└── data/
-    ├── projects.json      # Project list
-    ├── tasks.json         # All tasks
-    └── tags.json          # Tag definitions
-```
-
-- ✅ **Fully offline** — No internet connection needed
-- ✅ **Portable** — Copy folder to backup/transfer
-- ✅ **Version control friendly** — JSON format for easy diff
-- ✅ **Privacy secure** — Data never leaves your machine
+You can export or import backup files from the web interface.
 
 ---
 
