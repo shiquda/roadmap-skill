@@ -5,8 +5,8 @@
 </p>
 
 <p align="center">
-  <strong>Let AI manage your projects, keep Kanban simple</strong><br>
-  Zero-config startup, local data, Agent-native support
+  <strong>Shared roadmap for humans and AI Agents</strong><br>
+  Visual kanban for you. MCP server for Agents. Local-first.
 </p>
 
 <p align="center">
@@ -26,15 +26,15 @@
 
 ---
 
-## Why Roadmap Skill?
+## What Makes It Different
 
-| Your Pain Point | How Roadmap Skill Solves It |
-|----------------|----------------------------|
-| Project data scattered in third-party clouds | **Local-first** — All data stored on your machine, full control, works offline |
-| Copy-pasting task lists when chatting with AI | **Agent-native** — AI reads/writes tasks directly, zero friction in conversation |
-| Text-only management lacks visuals, but traditional tools are bloated | **Beautiful Kanban** — Open browser when needed, drag and drop, doesn't interrupt coding flow |
-| Ideas and bugs from Vibe Coding get forgotten | **Collection Box** — Let Agent capture scattered thoughts, auto-organize todos |
-| Too many tasks, don't know where to start | **Smart Recommendations** — Agent analyzes context, proactively suggests next steps |
+**Shared context** — Chat with your Agent to plan tasks, or edit directly in the Kanban — both stay in sync. Your Agent always sees the latest state.
+
+**Agent-native** — Built as an MCP server. Your AI can create, update, and query tasks directly in conversation.
+
+**Lightweight Kanban** — Open `localhost:7860` when you feel like it, or ask your Agent to open it with `open_web_interface`. Or just stay in chat. All three work.
+
+**Local-first** — Your data lives on your machine. No accounts, no cloud sync, no vendor lock-in.
 
 ---
 
@@ -282,69 +282,35 @@ The AI will immediately create the project and tasks, saving them to local stora
 
 ## Who Is This For?
 
-| Scenario | What Roadmap Skill Does For You |
-|---------|--------------------------------|
-| **Solo Developers** | Manage personal projects through conversation, avoid getting lost in complex tools |
-| **AI Power Users** | Let Agent directly read/write tasks, goodbye to copy-pasting hassle |
-| **Vibe Coders** | Capture inspirations on the fly, automatically save to collection box |
-| **Small Teams** | Simple task assignment and progress tracking, zero learning curve |
-| **Privacy-conscious Users** | Data stored completely locally, never uploaded to any cloud service |
+Solo developers, AI power users, and vibe coders who want their Agent to be a real collaborator — not just a code generator.
 
 ---
 
 ## Typical Use Cases
 
-### 1. Capture Inspiration During Vibe Coding
+### 1. Capture Ideas Without Breaking Flow
 
-When discussing new features with AI, suddenly think of an optimization:
+Mid-session, something comes to mind:
 
-> "Add this to my collection: Refactor user auth module using JWT + Refresh Token scheme"
+> "Note this down: switch the auth module to JWT + refresh token rotation"
 
-AI automatically creates the task, and you'll see it in the Kanban later.
+Your Agent creates the task. You stay in flow. Open the Kanban later to review.
 
-### 2. Let AI Plan Project Structure
+### 2. Let AI Bootstrap Your Project Plan
 
-Starting a new project? Just ask AI to break it down:
+Starting something new:
 
-> "Create an e-commerce admin dashboard project with product management, order processing, and user permissions modules, broken down into specific development tasks"
+> "Set up a project for the admin dashboard — product management, orders, and user permissions. Break each into tasks."
 
-AI auto-creates the project structure. Just open the Kanban in browser and drag tasks to start working.
+Agent scaffolds the whole structure. You open the board and start dragging.
 
-### 3. Progress Tracking and Status Updates
+### 3. Check In Without Leaving the Chat
 
-Check progress anytime during coding:
+> "What's left on the current project? Anything high priority I haven't touched?"
 
-> "What's the completion percentage of my current project? What high-priority tasks haven't started yet?"
+> "Mark the login feature done and add a task for writing tests."
 
-> "Mark the user login feature as completed and create corresponding test tasks"
-
-### 4. Team Collaboration and Assignment
-
-Quickly assign in conversation:
-
-> "Assign frontend page tasks to @zhangsan, deadline this Friday, priority high"
-
-Team members can view their task list in the Kanban.
-
----
-
-## Installation
-
-### Requirements
-
-- Node.js 18+ (recommended 20+)
-
-### Global Install
-
-```bash
-npm install -g roadmap-skill
-```
-
-### Use Without Installing
-
-```bash
-npx roadmap-skill          # Full MCP server
-```
+No tab switching. No copy-pasting. Just ask.
 
 ---
 
