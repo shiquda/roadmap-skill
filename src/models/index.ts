@@ -116,7 +116,7 @@ export interface UpdateTaskInput {
 export interface CreateTagInput {
   projectId: string;
   name: string;
-  color: string;
+  color?: string;
   description?: string;
 }
 
@@ -146,4 +146,5 @@ export interface ProjectSummary {
   status: ProjectStatus;
   targetDate: string;
   taskCount: number;
+  tags?: Array<{ id: string; name: string; color: string }>;
 }

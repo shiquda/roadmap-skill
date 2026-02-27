@@ -115,5 +115,38 @@ describe('TagService', () => {
       expect(result.data).toHaveLength(1);
       expect((result.data[0] as any).taskCount).toBe(0);
     });
+
+    it('should generate deterministic color from tag name when color is omitted', async () => {
+      const { storage } = await import('../../src/storage/index.js');
+      const service = new TagService(storage);
+      const projectA = await createTestProject();
+      const projectB = await createTestProject();
+
+      const tagA = await service.create(projectA.project.id, { name: 'backend' });
+      const tagB = await service.create(projectB.project.id, { name: 'backend' });
+
+      if (!tagA.success) throw new Error(tagA.error);
+      if (!tagB.success) throw new Error(tagB.error);
+
+      expect(tagA.data.color).toMatch(/^#[0-9A-Fa-f]{6}$/);
+      expect(tagB.data.color).toMatch(/^#[0-9A-Fa-f]{6}$/);
+      expect(tagA.data.color).toBe(tagB.data.color);
+    });
+
+    it('should reject invalid hex color in service create', async () => {
+      const { storage } = await import('../../src/storage/index.js');
+      const service = new TagService(storage);
+      const project = await createTestProject();
+
+      const result = await service.create(project.project.id, {
+        name: 'invalid-color',
+        color: 'red',
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.code).toBe('VALIDATION_ERROR');
+      }
+    });
   });
 });

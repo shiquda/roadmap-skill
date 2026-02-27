@@ -19,7 +19,7 @@ function toTaskSummary(task: Task): TaskSummary {
 }
 export const createTaskTool = {
   name: 'create_task',
-  description: 'Create a new task in a project. Returns summary by default; set verbose=true for full data.',
+  description: 'Create a new task in a project. tags must be existing tag IDs from the same project. Returns summary by default; set verbose=true for full data.',
   inputSchema: z.object({
     projectId: z.string().min(1, 'Project ID is required'),
     title: z.string().min(1, 'Task title is required'),
@@ -121,7 +121,7 @@ export const getTaskTool = {
 
 export const updateTaskTool = {
   name: 'update_task',
-  description: 'Update an existing task. Returns summary by default; set verbose=true for full data.',
+  description: 'Update an existing task. tags must be existing tag IDs from the same project. Returns summary by default; set verbose=true for full data.',
   inputSchema: z.object({
     projectId: z.string().min(1, 'Project ID is required'),
     taskId: z.string().min(1, 'Task ID is required'),
@@ -180,7 +180,7 @@ export const deleteTaskTool = {
 
 export const batchUpdateTasksTool = {
   name: 'batch_update_tasks',
-  description: 'Update multiple tasks at once. Returns summaries by default; set verbose=true for full task data.',
+  description: 'Update multiple tasks at once. tags must be existing tag IDs from the same project. Returns summaries by default; set verbose=true for full task data.',
   inputSchema: z.object({
     projectId: z.string().min(1, 'Project ID is required'),
     taskIds: z.array(z.string()).min(1, 'At least one task ID is required'),

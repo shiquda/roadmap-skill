@@ -69,7 +69,7 @@ export interface BatchUpdateResult {
 
 export interface CreateTagData {
   name: string;
-  color: string;
+  color?: string;
   description?: string;
 }
 

@@ -3,7 +3,7 @@
  * Extracted from task-tools.ts to enable reuse across different interfaces
  */
 
-import type { Task, TaskStatus } from '../models/index.js';
+import type { ProjectData, Task, TaskStatus } from '../models/index.js';
 import { storage } from '../storage/index.js';
 import { writeJsonFile } from '../utils/file-helpers.js';
 import type {
@@ -53,6 +53,11 @@ function calculateCompletedAt(
   return existingCompletedAt;
 }
 
+function findInvalidTagIds(projectData: ProjectData, tagIds: string[]): string[] {
+  const validTagIds = new Set(projectData.tags.map((tag) => tag.id));
+  return tagIds.filter((tagId) => !validTagIds.has(tagId));
+}
+
 /**
  * TaskService - Business logic for task operations
  */
@@ -74,6 +79,16 @@ export const TaskService = {
         };
       }
 
+      const incomingTagIds = data.tags ?? [];
+      const invalidTagIds = findInvalidTagIds(projectData, incomingTagIds);
+      if (invalidTagIds.length > 0) {
+        return {
+          success: false,
+          error: `Invalid tag IDs for project '${projectId}': ${invalidTagIds.join(', ')}`,
+          code: 'VALIDATION_ERROR',
+        };
+      }
+
       const now = new Date().toISOString();
       const task: Task = {
         id: generateTaskId(),
@@ -82,7 +97,7 @@ export const TaskService = {
         description: data.description,
         status: 'todo',
         priority: data.priority ?? 'medium',
-        tags: data.tags ?? [],
+        tags: incomingTagIds,
         dueDate: data.dueDate ?? null,
         assignee: data.assignee ?? null,
         createdAt: now,
@@ -188,6 +203,17 @@ export const TaskService = {
           error: 'At least one field to update is required',
           code: 'VALIDATION_ERROR',
         };
+      }
+
+      if (data.tags) {
+        const invalidTagIds = findInvalidTagIds(projectData, data.tags);
+        if (invalidTagIds.length > 0) {
+          return {
+            success: false,
+            error: `Invalid tag IDs for project '${projectId}': ${invalidTagIds.join(', ')}`,
+            code: 'VALIDATION_ERROR',
+          };
+        }
       }
 
       const now = new Date().toISOString();
@@ -353,11 +379,22 @@ export const TaskService = {
         }
 
         const existingTask = projectData.tasks[taskIndex];
-        let updatedTags = existingTask.tags;
+        let updatedTags = existingTask.tags ?? [];
+
+        if (data.tags) {
+          const invalidTagIds = findInvalidTagIds(projectData, data.tags);
+          if (invalidTagIds.length > 0) {
+            return {
+              success: false,
+              error: `Invalid tag IDs for project '${projectId}': ${invalidTagIds.join(', ')}`,
+              code: 'VALIDATION_ERROR',
+            };
+          }
+        }
 
         // Handle tags based on tagOperation
-        if (data.tags && data.tags.length > 0) {
-          const existingTags = existingTask.tags || [];
+        if (data.tags) {
+          const existingTags = existingTask.tags ?? [];
           switch (data.tagOperation) {
             case 'add':
               updatedTags = [...new Set([...existingTags, ...data.tags])];

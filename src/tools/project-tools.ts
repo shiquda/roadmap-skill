@@ -5,7 +5,11 @@ import type { Project, ProjectSummary, Task, TaskSummary, CreateProjectInput, Up
 const ProjectTypeEnum = z.enum(['roadmap', 'skill-tree', 'kanban']);
 const ProjectStatusEnum = z.enum(['active', 'completed', 'archived']);
 
-function toProjectSummary(project: Project, taskCount: number): ProjectSummary {
+function toProjectSummary(
+  project: Project,
+  taskCount: number,
+  tags?: Array<{ id: string; name: string; color: string }>
+): ProjectSummary {
   return {
     id: project.id,
     name: project.name,
@@ -13,6 +17,7 @@ function toProjectSummary(project: Project, taskCount: number): ProjectSummary {
     status: project.status,
     targetDate: project.targetDate,
     taskCount,
+    ...(tags ? { tags } : {}),
   };
 }
 
@@ -73,18 +78,37 @@ export const createProjectTool = {
 
 export const listProjectsTool = {
   name: 'list_projects',
-  description: 'List all projects. Returns summaries by default; set verbose=true for full project data.',
+  description: 'List all projects. Summary mode includes current project tags for Agent reuse. Set verbose=true for full project data.',
   inputSchema: z.object({
     verbose: z.boolean().optional(),
   }),
   async execute(input: { verbose?: boolean }) {
     try {
       const projects = await storage.listProjects();
+
+      if (input.verbose) {
+        return {
+          success: true,
+          data: projects,
+        };
+      }
+
+      const summaries = await Promise.all(
+        projects.map(async (projectSummary) => {
+          const projectData = await storage.readProject(projectSummary.project.id);
+          const tags = (projectData?.tags ?? []).map((tag) => ({
+            id: tag.id,
+            name: tag.name,
+            color: tag.color,
+          }));
+
+          return toProjectSummary(projectSummary.project, projectSummary.taskCount, tags);
+        })
+      );
+
       return {
         success: true,
-        data: input.verbose
-          ? projects
-          : projects.map((p) => toProjectSummary(p.project, p.taskCount)),
+        data: summaries,
       };
     } catch (error) {
       return {

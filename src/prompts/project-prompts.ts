@@ -353,8 +353,18 @@ Suggest relevant tags:
 - Priority tags: urgent, important
 - Domain tags: frontend, backend, design, testing (if applicable)
 
+Tag consistency rules:
+- list_tags first, then prefer reusing existing tags in that project
+- If no suitable tag exists, create_tag first (color optional, system can auto-generate) and then use the returned tag ID
+- create_task.tags must contain tag IDs only (not tag names)
+
 ### 4. Create Task
 Use create_task to create the task immediately — no confirmation needed.
+Before create_task:
+1. Call list_tags(projectId)
+2. Match suggested tags to existing tags by name (case-insensitive)
+3. For missing tags, call create_tag(projectId, name, color?)
+4. Build create_task.tags from tag IDs only
 
 ### 5. Status
 After creating, if work starts immediately, use update_task to set status to in-progress.
@@ -369,6 +379,7 @@ After creating, if work starts immediately, use update_task to set status to in-
 - Type: Bug
 - Priority: High (affects user experience)
 - Suggested Tags: bug, frontend, mobile
+- create_task.tags: [existing_or_new_tag_ids]
 - Recommended Project: [Recommend if there's a web project]
 
 ## Current Idea:

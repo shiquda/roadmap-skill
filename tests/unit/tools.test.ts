@@ -136,6 +136,31 @@ describe('Tools', () => {
         expect(result.success).toBe(true);
         expect(result.data).toEqual([]);
       });
+
+      it('should include project tags in summary mode', async () => {
+        const project = await createTestProject('Project With Tags');
+
+        const tagResult = await createTagTool.execute({
+          projectId: project.project.id,
+          name: 'Backend',
+          color: '#2563EB',
+          description: '',
+        });
+
+        expect(tagResult.success).toBe(true);
+
+        const result = await listProjectsTool.execute({});
+        expect(result.success).toBe(true);
+
+        const target = (result.data as Array<{ id: string; tags?: Array<{ id: string; name: string; color: string }> }>).find(
+          (item) => item.id === project.project.id
+        );
+
+        expect(target).toBeDefined();
+        expect(target?.tags).toBeDefined();
+        expect(target?.tags).toHaveLength(1);
+        expect(target?.tags?.[0].name).toBe('Backend');
+      });
     });
 
     describe('getProjectTool', () => {
@@ -259,6 +284,21 @@ describe('Tools', () => {
         expect(result.success).toBe(false);
         expect(result.error).toContain('not found');
       });
+
+      it('should reject unknown tag IDs', async () => {
+        const project = await createTestProject('Test Project');
+
+        const result = await createTaskTool.execute({
+          projectId: project.project.id,
+          title: 'New Task',
+          description: 'Task description',
+          priority: 'medium',
+          tags: ['unknown-tag-id'],
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('Invalid tag IDs');
+      });
     });
 
     describe('listTasksTool', () => {
@@ -367,6 +407,20 @@ describe('Tools', () => {
         expect(result.success).toBe(false);
         expect(result.error).toContain('At least one field');
       });
+
+      it('should return validation error when updating with unknown tag IDs', async () => {
+        const project = await createTestProject('Test Project');
+        const task = await createTestTask(project.project.id, 'Task');
+
+        const result = await updateTaskTool.execute({
+          projectId: project.project.id,
+          taskId: task.id,
+          tags: ['unknown-tag-id'],
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('Invalid tag IDs');
+      });
     });
 
     describe('deleteTaskTool', () => {
@@ -426,63 +480,117 @@ describe('Tools', () => {
       it('should add tags with add operation', async () => {
         const project = await createTestProject('Test Project');
         const task = await createTestTask(project.project.id, 'Task');
+        const tagResult = await createTagTool.execute({
+          projectId: project.project.id,
+          name: 'New Tag',
+          color: '#10B981',
+          description: '',
+        });
+
+        expect(tagResult.success).toBe(true);
+        const createdTagId = (tagResult.data as { id: string }).id;
 
         const result = await batchUpdateTasksTool.execute({
           projectId: project.project.id,
           taskIds: [task.id],
-          tags: ['new-tag'],
+          tags: [createdTagId],
           tagOperation: 'add',
         });
 
         expect(result.success).toBe(true);
-        expect(result.data.updatedTasks[0].tags).toContain('new-tag');
+        expect(result.data.updatedTasks[0].tags).toContain(createdTagId);
       });
 
       it('should remove tags with remove operation', async () => {
         const project = await createTestProject('Test Project');
         const task = await createTestTask(project.project.id, 'Task');
+        const tagAResult = await createTagTool.execute({
+          projectId: project.project.id,
+          name: 'Tag A',
+          color: '#EF4444',
+          description: '',
+        });
+        const tagBResult = await createTagTool.execute({
+          projectId: project.project.id,
+          name: 'Tag B',
+          color: '#3B82F6',
+          description: '',
+        });
+
+        expect(tagAResult.success).toBe(true);
+        expect(tagBResult.success).toBe(true);
+        const tagAId = (tagAResult.data as { id: string }).id;
+        const tagBId = (tagBResult.data as { id: string }).id;
+
         await batchUpdateTasksTool.execute({
           projectId: project.project.id,
           taskIds: [task.id],
-          tags: ['tag-a', 'tag-b'],
+          tags: [tagAId, tagBId],
           tagOperation: 'replace',
         });
 
         const result = await batchUpdateTasksTool.execute({
           projectId: project.project.id,
           taskIds: [task.id],
-          tags: ['tag-a'],
+          tags: [tagAId],
           tagOperation: 'remove',
         });
 
         expect(result.success).toBe(true);
-        expect(result.data.updatedTasks[0].tags).not.toContain('tag-a');
-        expect(result.data.updatedTasks[0].tags).toContain('tag-b');
+        expect(result.data.updatedTasks[0].tags).not.toContain(tagAId);
+        expect(result.data.updatedTasks[0].tags).toContain(tagBId);
       });
 
       it('should replace tags with replace operation', async () => {
         const project = await createTestProject('Test Project');
         const task = await createTestTask(project.project.id, 'Task');
+        const oldTagResult = await createTagTool.execute({
+          projectId: project.project.id,
+          name: 'Old Tag',
+          color: '#F59E0B',
+          description: '',
+        });
+        const newTagResult = await createTagTool.execute({
+          projectId: project.project.id,
+          name: 'New Tag',
+          color: '#8B5CF6',
+          description: '',
+        });
+
+        expect(oldTagResult.success).toBe(true);
+        expect(newTagResult.success).toBe(true);
+        const oldTagId = (oldTagResult.data as { id: string }).id;
+        const newTagId = (newTagResult.data as { id: string }).id;
+
         await batchUpdateTasksTool.execute({
           projectId: project.project.id,
           taskIds: [task.id],
-          tags: ['old-tag'],
+          tags: [oldTagId],
           tagOperation: 'replace',
         });
 
         const result = await batchUpdateTasksTool.execute({
           projectId: project.project.id,
           taskIds: [task.id],
-          tags: ['new-tag'],
+          tags: [newTagId],
           tagOperation: 'replace',
         });
 
         expect(result.success).toBe(true);
-        expect(result.data.updatedTasks[0].tags).toEqual(['new-tag']);
+        expect(result.data.updatedTasks[0].tags).toEqual([newTagId]);
       });
 
       it('should handle tasks with undefined tags', async () => {
         const project = await createTestProject('Test Project');
+        const tagResult = await createTagTool.execute({
+          projectId: project.project.id,
+          name: 'Recovered Tag',
+          color: '#14B8A6',
+          description: '',
+        });
+        expect(tagResult.success).toBe(true);
+        const recoveredTagId = (tagResult.data as { id: string }).id;
+
         // Create a task manually with undefined tags to simulate legacy data
         const { storage } = await import('../../src/storage/index.js');
         const projectData = await storage.readProject(project.project.id);
@@ -508,12 +616,27 @@ describe('Tools', () => {
         const result = await batchUpdateTasksTool.execute({
           projectId: project.project.id,
           taskIds: [taskWithUndefinedTags.id],
-          tags: ['new-tag'],
+          tags: [recoveredTagId],
           tagOperation: 'add',
         });
 
         expect(result.success, result.error).toBe(true);
-        expect(result.data!.updatedTasks[0].tags).toContain('new-tag');
+        expect(result.data!.updatedTasks[0].tags).toContain(recoveredTagId);
+      });
+
+      it('should reject unknown tag IDs in batch update', async () => {
+        const project = await createTestProject('Test Project');
+        const task = await createTestTask(project.project.id, 'Task');
+
+        const result = await batchUpdateTasksTool.execute({
+          projectId: project.project.id,
+          taskIds: [task.id],
+          tags: ['unknown-tag-id'],
+          tagOperation: 'replace',
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('Invalid tag IDs');
       });
     });
   });
