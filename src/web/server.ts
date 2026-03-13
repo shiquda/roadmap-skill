@@ -181,6 +181,24 @@ export function createServer(port: number = 7860): Promise<Server> {
       }
     });
 
+    app.put('/api/projects/:projectId/dependency-views/:viewId/nodes', async (req, res) => {
+      try {
+        const result = await dependencyViewService.batchUpdateNodes(
+          req.params.projectId,
+          req.params.viewId,
+          req.body
+        );
+        if (!result.success) {
+          const statusCode = result.code === 'NOT_FOUND' ? 404 : 400;
+          res.status(statusCode).json({ error: result.error });
+          return;
+        }
+        res.json({ success: true, data: result.data });
+      } catch (error) {
+        res.status(500).json({ error: (error as Error).message });
+      }
+    });
+
     app.delete('/api/projects/:projectId/dependency-views/:viewId/nodes/:taskId', async (req, res) => {
       try {
         const result = await dependencyViewService.removeNode(req.params.projectId, req.params.viewId, req.params.taskId);

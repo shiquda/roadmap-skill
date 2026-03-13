@@ -5,7 +5,6 @@
 
 import type { ProjectData, Task, TaskStatus } from '../models/index.js';
 import { storage } from '../storage/index.js';
-import { writeJsonFile } from '../utils/file-helpers.js';
 import type {
   ServiceResult,
   CreateTaskData,
@@ -70,8 +69,49 @@ export const TaskService = {
    */
   async create(projectId: string, data: CreateTaskData): Promise<ServiceResult<Task>> {
     try {
-      const projectData = await storage.readProject(projectId);
-      if (!projectData) {
+      const result = await storage.mutateProject<ServiceResult<Task>>(projectId, async (projectData) => {
+        const incomingTagIds = data.tags ?? [];
+        const invalidTagIds = findInvalidTagIds(projectData, incomingTagIds);
+        if (invalidTagIds.length > 0) {
+          return {
+            result: {
+              success: false,
+              error: `Invalid tag IDs for project '${projectId}': ${invalidTagIds.join(', ')}`,
+              code: 'VALIDATION_ERROR',
+            } satisfies ServiceResult<Task>,
+            shouldSave: false,
+          };
+        }
+
+        const now = new Date().toISOString();
+        const task: Task = {
+          id: generateTaskId(),
+          projectId,
+          title: data.title,
+          description: data.description,
+          status: 'todo',
+          priority: data.priority ?? 'medium',
+          tags: incomingTagIds,
+          dueDate: data.dueDate ?? null,
+          assignee: data.assignee ?? null,
+          createdAt: now,
+          updatedAt: now,
+          completedAt: null,
+        };
+
+        projectData.tasks.push(task);
+        projectData.project.updatedAt = now;
+
+        return {
+          result: {
+            success: true,
+            data: task,
+          } satisfies ServiceResult<Task>,
+          shouldSave: true,
+        };
+      });
+
+      if (result === null) {
         return {
           success: false,
           error: `Project with ID '${projectId}' not found`,
@@ -79,42 +119,7 @@ export const TaskService = {
         };
       }
 
-      const incomingTagIds = data.tags ?? [];
-      const invalidTagIds = findInvalidTagIds(projectData, incomingTagIds);
-      if (invalidTagIds.length > 0) {
-        return {
-          success: false,
-          error: `Invalid tag IDs for project '${projectId}': ${invalidTagIds.join(', ')}`,
-          code: 'VALIDATION_ERROR',
-        };
-      }
-
-      const now = new Date().toISOString();
-      const task: Task = {
-        id: generateTaskId(),
-        projectId,
-        title: data.title,
-        description: data.description,
-        status: 'todo',
-        priority: data.priority ?? 'medium',
-        tags: incomingTagIds,
-        dueDate: data.dueDate ?? null,
-        assignee: data.assignee ?? null,
-        createdAt: now,
-        updatedAt: now,
-        completedAt: null,
-      };
-
-      projectData.tasks.push(task);
-      projectData.project.updatedAt = now;
-
-      const filePath = storage.getFilePath(projectId);
-      await writeJsonFile(filePath, projectData);
-
-      return {
-        success: true,
-        data: task,
-      };
+      return result;
     } catch (error) {
       return {
         success: false,
@@ -177,8 +182,77 @@ export const TaskService = {
     data: UpdateTaskData
   ): Promise<ServiceResult<Task>> {
     try {
-      const projectData = await storage.readProject(projectId);
-      if (!projectData) {
+      const result = await storage.mutateProject<ServiceResult<Task>>(projectId, async (projectData) => {
+        const taskIndex = projectData.tasks.findIndex((t) => t.id === taskId);
+        if (taskIndex === -1) {
+          return {
+            result: {
+              success: false,
+              error: `Task with ID '${taskId}' not found in project '${projectId}'`,
+              code: 'NOT_FOUND',
+            } satisfies ServiceResult<Task>,
+            shouldSave: false,
+          };
+        }
+
+        const updateKeys = Object.keys(data);
+        if (updateKeys.length === 0) {
+          return {
+            result: {
+              success: false,
+              error: 'At least one field to update is required',
+              code: 'VALIDATION_ERROR',
+            } satisfies ServiceResult<Task>,
+            shouldSave: false,
+          };
+        }
+
+        if (data.tags) {
+          const invalidTagIds = findInvalidTagIds(projectData, data.tags);
+          if (invalidTagIds.length > 0) {
+            return {
+              result: {
+                success: false,
+                error: `Invalid tag IDs for project '${projectId}': ${invalidTagIds.join(', ')}`,
+                code: 'VALIDATION_ERROR',
+              } satisfies ServiceResult<Task>,
+              shouldSave: false,
+            };
+          }
+        }
+
+        const now = new Date().toISOString();
+        const existingTask = projectData.tasks[taskIndex];
+        const completedAt = calculateCompletedAt(
+          existingTask.status,
+          data.status,
+          existingTask.completedAt,
+          now
+        );
+
+        const updatedTask: Task = {
+          ...existingTask,
+          ...data,
+          id: existingTask.id,
+          projectId: existingTask.projectId,
+          createdAt: existingTask.createdAt,
+          updatedAt: now,
+          completedAt,
+        };
+
+        projectData.tasks[taskIndex] = updatedTask;
+        projectData.project.updatedAt = now;
+
+        return {
+          result: {
+            success: true,
+            data: updatedTask,
+          } satisfies ServiceResult<Task>,
+          shouldSave: true,
+        };
+      });
+
+      if (result === null) {
         return {
           success: false,
           error: `Project with ID '${projectId}' not found`,
@@ -186,67 +260,7 @@ export const TaskService = {
         };
       }
 
-      const taskIndex = projectData.tasks.findIndex((t) => t.id === taskId);
-      if (taskIndex === -1) {
-        return {
-          success: false,
-          error: `Task with ID '${taskId}' not found in project '${projectId}'`,
-          code: 'NOT_FOUND',
-        };
-      }
-
-      // Check if there's anything to update
-      const updateKeys = Object.keys(data);
-      if (updateKeys.length === 0) {
-        return {
-          success: false,
-          error: 'At least one field to update is required',
-          code: 'VALIDATION_ERROR',
-        };
-      }
-
-      if (data.tags) {
-        const invalidTagIds = findInvalidTagIds(projectData, data.tags);
-        if (invalidTagIds.length > 0) {
-          return {
-            success: false,
-            error: `Invalid tag IDs for project '${projectId}': ${invalidTagIds.join(', ')}`,
-            code: 'VALIDATION_ERROR',
-          };
-        }
-      }
-
-      const now = new Date().toISOString();
-      const existingTask = projectData.tasks[taskIndex];
-
-      // Calculate completedAt based on status change
-      const completedAt = calculateCompletedAt(
-        existingTask.status,
-        data.status,
-        existingTask.completedAt,
-        now
-      );
-
-      const updatedTask: Task = {
-        ...existingTask,
-        ...data,
-        id: existingTask.id,
-        projectId: existingTask.projectId,
-        createdAt: existingTask.createdAt,
-        updatedAt: now,
-        completedAt,
-      };
-
-      projectData.tasks[taskIndex] = updatedTask;
-      projectData.project.updatedAt = now;
-
-      const filePath = storage.getFilePath(projectId);
-      await writeJsonFile(filePath, projectData);
-
-      return {
-        success: true,
-        data: updatedTask,
-      };
+      return result;
     } catch (error) {
       return {
         success: false,
@@ -264,8 +278,33 @@ export const TaskService = {
    */
   async delete(projectId: string, taskId: string): Promise<ServiceResult<void>> {
     try {
-      const projectData = await storage.readProject(projectId);
-      if (!projectData) {
+      const result = await storage.mutateProject<ServiceResult<void>>(projectId, async (projectData) => {
+        const taskIndex = projectData.tasks.findIndex((t) => t.id === taskId);
+        if (taskIndex === -1) {
+          return {
+            result: {
+              success: false,
+              error: `Task with ID '${taskId}' not found in project '${projectId}'`,
+              code: 'NOT_FOUND',
+            } satisfies ServiceResult<void>,
+            shouldSave: false,
+          };
+        }
+
+        const now = new Date().toISOString();
+        projectData.tasks.splice(taskIndex, 1);
+        projectData.project.updatedAt = now;
+
+        return {
+          result: {
+            success: true,
+            data: undefined,
+          } satisfies ServiceResult<void>,
+          shouldSave: true,
+        };
+      });
+
+      if (result === null) {
         return {
           success: false,
           error: `Project with ID '${projectId}' not found`,
@@ -273,26 +312,7 @@ export const TaskService = {
         };
       }
 
-      const taskIndex = projectData.tasks.findIndex((t) => t.id === taskId);
-      if (taskIndex === -1) {
-        return {
-          success: false,
-          error: `Task with ID '${taskId}' not found in project '${projectId}'`,
-          code: 'NOT_FOUND',
-        };
-      }
-
-      const now = new Date().toISOString();
-      projectData.tasks.splice(taskIndex, 1);
-      projectData.project.updatedAt = now;
-
-      const filePath = storage.getFilePath(projectId);
-      await writeJsonFile(filePath, projectData);
-
-      return {
-        success: true,
-        data: undefined,
-      };
+      return result;
     } catch (error) {
       return {
         success: false,
@@ -358,8 +378,98 @@ export const TaskService = {
     data: BatchUpdateTaskData
   ): Promise<ServiceResult<BatchUpdateResult>> {
     try {
-      const projectData = await storage.readProject(projectId);
-      if (!projectData) {
+      const result = await storage.mutateProject<ServiceResult<BatchUpdateResult>>(projectId, async (projectData) => {
+        const now = new Date().toISOString();
+        const updatedTasks: Task[] = [];
+        const notFoundIds: string[] = [];
+
+        for (const taskId of taskIds) {
+          const taskIndex = projectData.tasks.findIndex((t) => t.id === taskId);
+          if (taskIndex === -1) {
+            notFoundIds.push(taskId);
+            continue;
+          }
+
+          const existingTask = projectData.tasks[taskIndex];
+          let updatedTags = existingTask.tags ?? [];
+
+          if (data.tags) {
+            const invalidTagIds = findInvalidTagIds(projectData, data.tags);
+            if (invalidTagIds.length > 0) {
+              return {
+                result: {
+                  success: false,
+                  error: `Invalid tag IDs for project '${projectId}': ${invalidTagIds.join(', ')}`,
+                  code: 'VALIDATION_ERROR',
+                } satisfies ServiceResult<BatchUpdateResult>,
+                shouldSave: false,
+              };
+            }
+          }
+
+          if (data.tags) {
+            const existingTags = existingTask.tags ?? [];
+            switch (data.tagOperation) {
+              case 'add':
+                updatedTags = [...new Set([...existingTags, ...data.tags])];
+                break;
+              case 'remove':
+                updatedTags = existingTags.filter((tag) => !data.tags!.includes(tag));
+                break;
+              case 'replace':
+              default:
+                updatedTags = data.tags;
+                break;
+            }
+          }
+
+          const completedAt = calculateCompletedAt(
+            existingTask.status,
+            data.status,
+            existingTask.completedAt,
+            now
+          );
+
+          const updatedTask: Task = {
+            ...existingTask,
+            ...(data.status && { status: data.status }),
+            ...(data.priority && { priority: data.priority }),
+            tags: updatedTags,
+            updatedAt: now,
+            completedAt,
+          };
+
+          projectData.tasks[taskIndex] = updatedTask;
+          updatedTasks.push(updatedTask);
+        }
+
+        if (updatedTasks.length === 0) {
+          return {
+            result: {
+              success: false,
+              error: 'No tasks were found to update',
+              code: 'NOT_FOUND',
+            } satisfies ServiceResult<BatchUpdateResult>,
+            shouldSave: false,
+          };
+        }
+
+        projectData.project.updatedAt = now;
+
+        return {
+          result: {
+            success: true,
+            data: {
+              updatedTasks,
+              updatedCount: updatedTasks.length,
+              notFoundIds: notFoundIds.length > 0 ? notFoundIds : undefined,
+            },
+          } satisfies ServiceResult<BatchUpdateResult>,
+          shouldSave: true,
+        };
+      });
+
+      if (result === null) {
         return {
           success: false,
           error: `Project with ID '${projectId}' not found`,
@@ -367,90 +477,7 @@ export const TaskService = {
         };
       }
 
-      const now = new Date().toISOString();
-      const updatedTasks: Task[] = [];
-      const notFoundIds: string[] = [];
-
-      for (const taskId of taskIds) {
-        const taskIndex = projectData.tasks.findIndex((t) => t.id === taskId);
-        if (taskIndex === -1) {
-          notFoundIds.push(taskId);
-          continue;
-        }
-
-        const existingTask = projectData.tasks[taskIndex];
-        let updatedTags = existingTask.tags ?? [];
-
-        if (data.tags) {
-          const invalidTagIds = findInvalidTagIds(projectData, data.tags);
-          if (invalidTagIds.length > 0) {
-            return {
-              success: false,
-              error: `Invalid tag IDs for project '${projectId}': ${invalidTagIds.join(', ')}`,
-              code: 'VALIDATION_ERROR',
-            };
-          }
-        }
-
-        // Handle tags based on tagOperation
-        if (data.tags) {
-          const existingTags = existingTask.tags ?? [];
-          switch (data.tagOperation) {
-            case 'add':
-              updatedTags = [...new Set([...existingTags, ...data.tags])];
-              break;
-            case 'remove':
-              updatedTags = existingTags.filter((tag) => !data.tags!.includes(tag));
-              break;
-            case 'replace':
-            default:
-              updatedTags = data.tags;
-              break;
-          }
-        }
-
-        // Calculate completedAt based on status change
-        const completedAt = calculateCompletedAt(
-          existingTask.status,
-          data.status,
-          existingTask.completedAt,
-          now
-        );
-
-        const updatedTask: Task = {
-          ...existingTask,
-          ...(data.status && { status: data.status }),
-          ...(data.priority && { priority: data.priority }),
-          tags: updatedTags,
-          updatedAt: now,
-          completedAt,
-        };
-
-        projectData.tasks[taskIndex] = updatedTask;
-        updatedTasks.push(updatedTask);
-      }
-
-      if (updatedTasks.length === 0) {
-        return {
-          success: false,
-          error: 'No tasks were found to update',
-          code: 'NOT_FOUND',
-        };
-      }
-
-      projectData.project.updatedAt = now;
-
-      const filePath = storage.getFilePath(projectId);
-      await writeJsonFile(filePath, projectData);
-
-      return {
-        success: true,
-        data: {
-          updatedTasks,
-          updatedCount: updatedTasks.length,
-          notFoundIds: notFoundIds.length > 0 ? notFoundIds : undefined,
-        },
-      };
+      return result;
     } catch (error) {
       return {
         success: false,

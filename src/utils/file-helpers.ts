@@ -1,4 +1,12 @@
 import * as fs from 'fs/promises';
+import * as path from 'path';
+
+function buildTempFilePath(filePath: string): string {
+  const fileName = path.basename(filePath);
+  const tempSuffix = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  return path.join(path.dirname(filePath), `.${fileName}.${tempSuffix}.tmp`);
+}
 
 /**
  * Read and parse a JSON file
@@ -25,10 +33,19 @@ export async function readJsonFile<T>(filePath: string): Promise<T> {
  * @throws Error if file cannot be written
  */
 export async function writeJsonFile<T>(filePath: string, data: T): Promise<void> {
+  const tempPath = buildTempFilePath(filePath);
+
   try {
     const content = JSON.stringify(data, null, 2);
-    await fs.writeFile(filePath, content, 'utf-8');
+
+    await fs.writeFile(tempPath, content, 'utf-8');
+    await fs.rename(tempPath, filePath);
   } catch (error) {
+    try {
+      await fs.unlink(tempPath);
+    } catch {
+    }
+
     if (error instanceof Error) {
       throw new Error(`Failed to write JSON file ${filePath}: ${error.message}`);
     }

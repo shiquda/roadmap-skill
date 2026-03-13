@@ -203,18 +203,28 @@ export const applyTemplateTool = {
         tasks.push(task);
       }
 
-      projectData.tags = tags;
-      projectData.tasks = tasks;
-      projectData.project.updatedAt = now;
+      const updatedProjectData = await storage.mutateProject(projectId, async (storedProjectData) => {
+        storedProjectData.tags = tags;
+        storedProjectData.tasks = tasks;
+        storedProjectData.project.updatedAt = now;
 
-      const filePath = storage.getFilePath(projectId);
-      const { writeJsonFile } = await import('../utils/file-helpers.js');
-      await writeJsonFile(filePath, projectData);
+        return {
+          result: storedProjectData,
+          shouldSave: true,
+        };
+      });
+
+      if (!updatedProjectData) {
+        return {
+          success: false,
+          error: `Project '${projectId}' not found after creation`,
+        };
+      }
 
       return {
         success: true,
         data: {
-          project: projectData.project,
+          project: updatedProjectData.project,
           taskCount: tasks.length,
           tagCount: tags.length,
           tasksCreated: tasks.map((t) => ({

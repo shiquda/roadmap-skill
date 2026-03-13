@@ -10,15 +10,62 @@ import type {
 import { getStorageDir } from '../utils/path-helpers.js';
 import { readJsonFile, writeJsonFile, ensureDir } from '../utils/file-helpers.js';
 
+type ProjectMutationResult<T> = {
+  result: T;
+  shouldSave: boolean;
+};
+
 /**
  * Storage class for managing roadmap-skill projects
  * Projects are stored as individual JSON files in ~/.roadmap-skill/projects/
  */
 export class ProjectStorage {
   private storageDir: string;
+  private projectMutationQueues: Map<string, Promise<void>>;
 
   constructor() {
     this.storageDir = getStorageDir();
+    this.projectMutationQueues = new Map();
+  }
+
+  private async runProjectMutation<T>(projectId: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.projectMutationQueues.get(projectId) ?? Promise.resolve();
+
+    let releaseQueue!: () => void;
+    const current = new Promise<void>((resolve) => {
+      releaseQueue = resolve;
+    });
+
+    this.projectMutationQueues.set(projectId, current);
+
+    try {
+      await previous;
+      return await operation();
+    } finally {
+      releaseQueue();
+      if (this.projectMutationQueues.get(projectId) === current) {
+        this.projectMutationQueues.delete(projectId);
+      }
+    }
+  }
+
+  async mutateProject<T>(
+    projectId: string,
+    updater: (projectData: ProjectData) => Promise<ProjectMutationResult<T>> | ProjectMutationResult<T>
+  ): Promise<T | null> {
+    return this.runProjectMutation(projectId, async () => {
+      const projectData = await this.readProject(projectId);
+      if (!projectData) {
+        return null;
+      }
+
+      const updateResult = await updater(projectData);
+      if (updateResult.shouldSave) {
+        await writeJsonFile(this.getFilePath(projectId), projectData);
+      }
+
+      return updateResult.result;
+    });
   }
 
   /**
@@ -106,23 +153,20 @@ export class ProjectStorage {
     projectId: string,
     input: UpdateProjectInput
   ): Promise<ProjectData | null> {
-    const projectData = await this.readProject(projectId);
-    if (!projectData) {
-      return null;
-    }
+    return this.mutateProject(projectId, async (projectData) => {
+      const now = new Date().toISOString();
 
-    const now = new Date().toISOString();
+      projectData.project = {
+        ...projectData.project,
+        ...input,
+        updatedAt: now,
+      };
 
-    projectData.project = {
-      ...projectData.project,
-      ...input,
-      updatedAt: now,
-    };
-
-    const filePath = this.getFilePath(projectId);
-    await writeJsonFile(filePath, projectData);
-
-    return projectData;
+      return {
+        result: projectData,
+        shouldSave: true,
+      };
+    });
   }
 
   /**
@@ -131,17 +175,19 @@ export class ProjectStorage {
    * @returns True if deleted, false if not found
    */
   async deleteProject(projectId: string): Promise<boolean> {
-    try {
-      const filePath = this.getFilePath(projectId);
-      const fs = await import('fs/promises');
-      await fs.unlink(filePath);
-      return true;
-    } catch (error) {
-      if (error instanceof Error && error.message.includes('ENOENT')) {
-        return false;
+    return this.runProjectMutation(projectId, async () => {
+      try {
+        const filePath = this.getFilePath(projectId);
+        const fs = await import('fs/promises');
+        await fs.unlink(filePath);
+        return true;
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('ENOENT')) {
+          return false;
+        }
+        throw error;
       }
-      throw error;
-    }
+    });
   }
 
   /**
@@ -311,7 +357,9 @@ export class ProjectStorage {
         }
 
         const filePath = this.getFilePath(projectData.project.id);
-        await writeJsonFile(filePath, projectData);
+        await this.runProjectMutation(projectData.project.id, async () => {
+          await writeJsonFile(filePath, projectData);
+        });
         imported++;
       } catch (error) {
         errors++;

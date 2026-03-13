@@ -6,10 +6,10 @@ import type {
   DependencyViewNode,
   ProjectData,
 } from '../models/index.js';
-import { writeJsonFile } from '../utils/file-helpers.js';
 import type {
   AddDependencyViewEdgeData,
   AddDependencyViewNodeData,
+  BatchUpdateDependencyViewNodesData,
   CreateDependencyViewData,
   ServiceResult,
   UpdateDependencyViewData,
@@ -41,6 +41,21 @@ function cloneView(view: DependencyView): DependencyView {
     nodes: view.nodes.map((node) => ({ ...node })),
     edges: view.edges.map((edge) => ({ ...edge })),
   };
+}
+
+function applyNodeUpdate(node: DependencyViewNode, data: UpdateDependencyViewNodeData): void {
+  if (data.x !== undefined) {
+    node.x = data.x;
+  }
+  if (data.y !== undefined) {
+    node.y = data.y;
+  }
+  if (data.collapsed !== undefined) {
+    node.collapsed = data.collapsed;
+  }
+  if (data.note !== undefined) {
+    node.note = data.note;
+  }
 }
 
 function buildAdjacency(view: DependencyView): Map<string, string[]> {
@@ -158,8 +173,44 @@ export class DependencyViewService {
 
   async create(projectId: string, data: CreateDependencyViewData): Promise<ServiceResult<DependencyView>> {
     try {
-      const projectData = await this.storage.readProject(projectId);
-      if (!projectData) {
+      const result = await this.storage.mutateProject<ServiceResult<DependencyView>>(projectId, async (projectData) => {
+        const views = getDependencyViews(projectData);
+        const name = data.name.trim();
+        if (!name) {
+          return {
+            result: {
+              success: false,
+              error: 'Dependency view name is required',
+              code: 'VALIDATION_ERROR',
+            },
+            shouldSave: false,
+          };
+        }
+
+        const now = new Date().toISOString();
+        const view: DependencyView = {
+          id: generateDependencyViewId(),
+          projectId,
+          name,
+          description: data.description,
+          dimension: data.dimension ?? null,
+          createdAt: now,
+          updatedAt: now,
+          revision: 1,
+          nodes: [],
+          edges: [],
+        };
+
+        views.push(view);
+        projectData.project.updatedAt = now;
+
+        return {
+          result: { success: true, data: view },
+          shouldSave: true,
+        };
+      });
+
+      if (result === null) {
         return {
           success: false,
           error: `Project with ID '${projectId}' not found`,
@@ -167,35 +218,7 @@ export class DependencyViewService {
         };
       }
 
-      const views = getDependencyViews(projectData);
-      const name = data.name.trim();
-      if (!name) {
-        return {
-          success: false,
-          error: 'Dependency view name is required',
-          code: 'VALIDATION_ERROR',
-        };
-      }
-
-      const now = new Date().toISOString();
-      const view: DependencyView = {
-        id: generateDependencyViewId(),
-        projectId,
-        name,
-        description: data.description,
-        dimension: data.dimension ?? null,
-        createdAt: now,
-        updatedAt: now,
-        revision: 1,
-        nodes: [],
-        edges: [],
-      };
-
-      views.push(view);
-      projectData.project.updatedAt = now;
-      await this.saveProject(projectId, projectData);
-
-      return { success: true, data: view };
+      return result;
     } catch (error) {
       return {
         success: false,
@@ -262,8 +285,60 @@ export class DependencyViewService {
     data: UpdateDependencyViewData
   ): Promise<ServiceResult<DependencyView>> {
     try {
-      const projectData = await this.storage.readProject(projectId);
-      if (!projectData) {
+      const result = await this.storage.mutateProject<ServiceResult<DependencyView>>(projectId, async (projectData) => {
+        if (Object.keys(data).length === 0) {
+          return {
+            result: {
+              success: false,
+              error: 'At least one field to update is required',
+              code: 'VALIDATION_ERROR',
+            },
+            shouldSave: false,
+          };
+        }
+
+        const view = findView(projectData, viewId);
+        if (!view) {
+          return {
+            result: {
+              success: false,
+              error: `Dependency view with ID '${viewId}' not found in project '${projectId}'`,
+              code: 'NOT_FOUND',
+            },
+            shouldSave: false,
+          };
+        }
+
+        if (data.name !== undefined && !data.name.trim()) {
+          return {
+            result: {
+              success: false,
+              error: 'Dependency view name cannot be empty',
+              code: 'VALIDATION_ERROR',
+            },
+            shouldSave: false,
+          };
+        }
+
+        const now = new Date().toISOString();
+        view.name = data.name?.trim() ?? view.name;
+        if (data.description !== undefined) {
+          view.description = data.description;
+        }
+        if (data.dimension !== undefined) {
+          view.dimension = data.dimension;
+        }
+        view.updatedAt = now;
+        view.revision += 1;
+        projectData.project.updatedAt = now;
+
+        return {
+          result: { success: true, data: cloneView(view) },
+          shouldSave: true,
+        };
+      });
+
+      if (result === null) {
         return {
           success: false,
           error: `Project with ID '${projectId}' not found`,
@@ -271,45 +346,7 @@ export class DependencyViewService {
         };
       }
 
-      if (Object.keys(data).length === 0) {
-        return {
-          success: false,
-          error: 'At least one field to update is required',
-          code: 'VALIDATION_ERROR',
-        };
-      }
-
-      const view = findView(projectData, viewId);
-      if (!view) {
-        return {
-          success: false,
-          error: `Dependency view with ID '${viewId}' not found in project '${projectId}'`,
-          code: 'NOT_FOUND',
-        };
-      }
-
-      if (data.name !== undefined && !data.name.trim()) {
-        return {
-          success: false,
-          error: 'Dependency view name cannot be empty',
-          code: 'VALIDATION_ERROR',
-        };
-      }
-
-      const now = new Date().toISOString();
-      view.name = data.name?.trim() ?? view.name;
-      if (data.description !== undefined) {
-        view.description = data.description;
-      }
-      if (data.dimension !== undefined) {
-        view.dimension = data.dimension;
-      }
-      view.updatedAt = now;
-      view.revision += 1;
-      projectData.project.updatedAt = now;
-
-      await this.saveProject(projectId, projectData);
-      return { success: true, data: cloneView(view) };
+      return result;
     } catch (error) {
       return {
         success: false,
@@ -321,8 +358,30 @@ export class DependencyViewService {
 
   async delete(projectId: string, viewId: string): Promise<ServiceResult<void>> {
     try {
-      const projectData = await this.storage.readProject(projectId);
-      if (!projectData) {
+      const result = await this.storage.mutateProject<ServiceResult<void>>(projectId, async (projectData) => {
+        const views = getDependencyViews(projectData);
+        const viewIndex = views.findIndex((view) => view.id === viewId);
+        if (viewIndex === -1) {
+          return {
+            result: {
+              success: false,
+              error: `Dependency view with ID '${viewId}' not found in project '${projectId}'`,
+              code: 'NOT_FOUND',
+            },
+            shouldSave: false,
+          };
+        }
+
+        views.splice(viewIndex, 1);
+        projectData.project.updatedAt = new Date().toISOString();
+
+        return {
+          result: { success: true, data: undefined },
+          shouldSave: true,
+        };
+      });
+
+      if (result === null) {
         return {
           success: false,
           error: `Project with ID '${projectId}' not found`,
@@ -330,20 +389,7 @@ export class DependencyViewService {
         };
       }
 
-      const views = getDependencyViews(projectData);
-      const viewIndex = views.findIndex((view) => view.id === viewId);
-      if (viewIndex === -1) {
-        return {
-          success: false,
-          error: `Dependency view with ID '${viewId}' not found in project '${projectId}'`,
-          code: 'NOT_FOUND',
-        };
-      }
-
-      views.splice(viewIndex, 1);
-      projectData.project.updatedAt = new Date().toISOString();
-      await this.saveProject(projectId, projectData);
-      return { success: true, data: undefined };
+      return result;
     } catch (error) {
       return {
         success: false,
@@ -359,8 +405,63 @@ export class DependencyViewService {
     data: AddDependencyViewNodeData
   ): Promise<ServiceResult<DependencyView>> {
     try {
-      const projectData = await this.storage.readProject(projectId);
-      if (!projectData) {
+      const result = await this.storage.mutateProject<ServiceResult<DependencyView>>(projectId, async (projectData) => {
+        const view = findView(projectData, viewId);
+        if (!view) {
+          return {
+            result: {
+              success: false,
+              error: `Dependency view with ID '${viewId}' not found in project '${projectId}'`,
+              code: 'NOT_FOUND',
+            },
+            shouldSave: false,
+          };
+        }
+
+        const task = projectData.tasks.find((item) => item.id === data.taskId);
+        if (!task) {
+          return {
+            result: {
+              success: false,
+              error: `Task with ID '${data.taskId}' not found in project '${projectId}'`,
+              code: 'NOT_FOUND',
+            },
+            shouldSave: false,
+          };
+        }
+
+        if (view.nodes.some((node) => node.taskId === data.taskId)) {
+          return {
+            result: {
+              success: false,
+              error: `Task '${data.taskId}' is already in dependency view '${viewId}'`,
+              code: 'DUPLICATE_ERROR',
+            },
+            shouldSave: false,
+          };
+        }
+
+        const node: DependencyViewNode = {
+          taskId: data.taskId,
+          x: data.x ?? 0,
+          y: data.y ?? 0,
+          collapsed: data.collapsed ?? false,
+          note: data.note ?? null,
+        };
+
+        const now = new Date().toISOString();
+        view.nodes.push(node);
+        view.updatedAt = now;
+        view.revision += 1;
+        projectData.project.updatedAt = now;
+
+        return {
+          result: { success: true, data: cloneView(view) },
+          shouldSave: true,
+        };
+      });
+
+      if (result === null) {
         return {
           success: false,
           error: `Project with ID '${projectId}' not found`,
@@ -368,48 +469,7 @@ export class DependencyViewService {
         };
       }
 
-      const view = findView(projectData, viewId);
-      if (!view) {
-        return {
-          success: false,
-          error: `Dependency view with ID '${viewId}' not found in project '${projectId}'`,
-          code: 'NOT_FOUND',
-        };
-      }
-
-      const task = projectData.tasks.find((item) => item.id === data.taskId);
-      if (!task) {
-        return {
-          success: false,
-          error: `Task with ID '${data.taskId}' not found in project '${projectId}'`,
-          code: 'NOT_FOUND',
-        };
-      }
-
-      if (view.nodes.some((node) => node.taskId === data.taskId)) {
-        return {
-          success: false,
-          error: `Task '${data.taskId}' is already in dependency view '${viewId}'`,
-          code: 'DUPLICATE_ERROR',
-        };
-      }
-
-      const node: DependencyViewNode = {
-        taskId: data.taskId,
-        x: data.x ?? 120,
-        y: data.y ?? 120,
-        collapsed: data.collapsed ?? false,
-        note: data.note ?? null,
-      };
-
-      const now = new Date().toISOString();
-      view.nodes.push(node);
-      view.updatedAt = now;
-      view.revision += 1;
-      projectData.project.updatedAt = now;
-
-      await this.saveProject(projectId, projectData);
-      return { success: true, data: cloneView(view) };
+      return result;
     } catch (error) {
       return {
         success: false,
@@ -426,8 +486,56 @@ export class DependencyViewService {
     data: UpdateDependencyViewNodeData
   ): Promise<ServiceResult<DependencyView>> {
     try {
-      const projectData = await this.storage.readProject(projectId);
-      if (!projectData) {
+      const result = await this.storage.mutateProject<ServiceResult<DependencyView>>(projectId, async (projectData) => {
+        if (Object.keys(data).length === 0) {
+          return {
+            result: {
+              success: false,
+              error: 'At least one node field to update is required',
+              code: 'VALIDATION_ERROR',
+            },
+            shouldSave: false,
+          };
+        }
+
+        const view = findView(projectData, viewId);
+        if (!view) {
+          return {
+            result: {
+              success: false,
+              error: `Dependency view with ID '${viewId}' not found in project '${projectId}'`,
+              code: 'NOT_FOUND',
+            },
+            shouldSave: false,
+          };
+        }
+
+        const node = view.nodes.find((item) => item.taskId === taskId);
+        if (!node) {
+          return {
+            result: {
+              success: false,
+              error: `Task '${taskId}' is not present in dependency view '${viewId}'`,
+              code: 'NOT_FOUND',
+            },
+            shouldSave: false,
+          };
+        }
+
+        applyNodeUpdate(node, data);
+
+        const now = new Date().toISOString();
+        view.updatedAt = now;
+        view.revision += 1;
+        projectData.project.updatedAt = now;
+
+        return {
+          result: { success: true, data: cloneView(view) },
+          shouldSave: true,
+        };
+      });
+
+      if (result === null) {
         return {
           success: false,
           error: `Project with ID '${projectId}' not found`,
@@ -435,52 +543,7 @@ export class DependencyViewService {
         };
       }
 
-      if (Object.keys(data).length === 0) {
-        return {
-          success: false,
-          error: 'At least one node field to update is required',
-          code: 'VALIDATION_ERROR',
-        };
-      }
-
-      const view = findView(projectData, viewId);
-      if (!view) {
-        return {
-          success: false,
-          error: `Dependency view with ID '${viewId}' not found in project '${projectId}'`,
-          code: 'NOT_FOUND',
-        };
-      }
-
-      const node = view.nodes.find((item) => item.taskId === taskId);
-      if (!node) {
-        return {
-          success: false,
-          error: `Task '${taskId}' is not present in dependency view '${viewId}'`,
-          code: 'NOT_FOUND',
-        };
-      }
-
-      if (data.x !== undefined) {
-        node.x = data.x;
-      }
-      if (data.y !== undefined) {
-        node.y = data.y;
-      }
-      if (data.collapsed !== undefined) {
-        node.collapsed = data.collapsed;
-      }
-      if (data.note !== undefined) {
-        node.note = data.note;
-      }
-
-      const now = new Date().toISOString();
-      view.updatedAt = now;
-      view.revision += 1;
-      projectData.project.updatedAt = now;
-
-      await this.saveProject(projectId, projectData);
-      return { success: true, data: cloneView(view) };
+      return result;
     } catch (error) {
       return {
         success: false,
@@ -490,10 +553,64 @@ export class DependencyViewService {
     }
   }
 
-  async removeNode(projectId: string, viewId: string, taskId: string): Promise<ServiceResult<DependencyView>> {
+  async batchUpdateNodes(
+    projectId: string,
+    viewId: string,
+    data: BatchUpdateDependencyViewNodesData
+  ): Promise<ServiceResult<DependencyView>> {
     try {
-      const projectData = await this.storage.readProject(projectId);
-      if (!projectData) {
+      const result = await this.storage.mutateProject<ServiceResult<DependencyView>>(projectId, async (projectData) => {
+        if (data.nodes.length === 0) {
+          return {
+            result: {
+              success: false,
+              error: 'At least one node update is required',
+              code: 'VALIDATION_ERROR',
+            },
+            shouldSave: false,
+          };
+        }
+
+        const view = findView(projectData, viewId);
+        if (!view) {
+          return {
+            result: {
+              success: false,
+              error: `Dependency view with ID '${viewId}' not found in project '${projectId}'`,
+              code: 'NOT_FOUND',
+            },
+            shouldSave: false,
+          };
+        }
+
+        for (const nodeUpdate of data.nodes) {
+          const node = view.nodes.find((item) => item.taskId === nodeUpdate.taskId);
+          if (!node) {
+            return {
+              result: {
+                success: false,
+                error: `Task '${nodeUpdate.taskId}' is not present in dependency view '${viewId}'`,
+                code: 'NOT_FOUND',
+              },
+              shouldSave: false,
+            };
+          }
+
+          applyNodeUpdate(node, nodeUpdate);
+        }
+
+        const now = new Date().toISOString();
+        view.updatedAt = now;
+        view.revision += 1;
+        projectData.project.updatedAt = now;
+
+        return {
+          result: { success: true, data: cloneView(view) },
+          shouldSave: true,
+        };
+      });
+
+      if (result === null) {
         return {
           success: false,
           error: `Project with ID '${projectId}' not found`,
@@ -501,34 +618,66 @@ export class DependencyViewService {
         };
       }
 
-      const view = findView(projectData, viewId);
-      if (!view) {
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to batch update dependency view nodes',
+        code: 'INTERNAL_ERROR',
+      };
+    }
+  }
+
+  async removeNode(projectId: string, viewId: string, taskId: string): Promise<ServiceResult<DependencyView>> {
+    try {
+      const result = await this.storage.mutateProject<ServiceResult<DependencyView>>(projectId, async (projectData) => {
+        const view = findView(projectData, viewId);
+        if (!view) {
+          return {
+            result: {
+              success: false,
+              error: `Dependency view with ID '${viewId}' not found in project '${projectId}'`,
+              code: 'NOT_FOUND',
+            },
+            shouldSave: false,
+          };
+        }
+
+        const nodeIndex = view.nodes.findIndex((node) => node.taskId === taskId);
+        if (nodeIndex === -1) {
+          return {
+            result: {
+              success: false,
+              error: `Task '${taskId}' is not present in dependency view '${viewId}'`,
+              code: 'NOT_FOUND',
+            },
+            shouldSave: false,
+          };
+        }
+
+        view.nodes.splice(nodeIndex, 1);
+        view.edges = view.edges.filter((edge) => edge.fromTaskId !== taskId && edge.toTaskId !== taskId);
+
+        const now = new Date().toISOString();
+        view.updatedAt = now;
+        view.revision += 1;
+        projectData.project.updatedAt = now;
+
+        return {
+          result: { success: true, data: cloneView(view) },
+          shouldSave: true,
+        };
+      });
+
+      if (result === null) {
         return {
           success: false,
-          error: `Dependency view with ID '${viewId}' not found in project '${projectId}'`,
+          error: `Project with ID '${projectId}' not found`,
           code: 'NOT_FOUND',
         };
       }
 
-      const nodeIndex = view.nodes.findIndex((node) => node.taskId === taskId);
-      if (nodeIndex === -1) {
-        return {
-          success: false,
-          error: `Task '${taskId}' is not present in dependency view '${viewId}'`,
-          code: 'NOT_FOUND',
-        };
-      }
-
-      view.nodes.splice(nodeIndex, 1);
-      view.edges = view.edges.filter((edge) => edge.fromTaskId !== taskId && edge.toTaskId !== taskId);
-
-      const now = new Date().toISOString();
-      view.updatedAt = now;
-      view.revision += 1;
-      projectData.project.updatedAt = now;
-
-      await this.saveProject(projectId, projectData);
-      return { success: true, data: cloneView(view) };
+      return result;
     } catch (error) {
       return {
         success: false,
@@ -544,8 +693,89 @@ export class DependencyViewService {
     data: AddDependencyViewEdgeData
   ): Promise<ServiceResult<DependencyView>> {
     try {
-      const projectData = await this.storage.readProject(projectId);
-      if (!projectData) {
+      const result = await this.storage.mutateProject<ServiceResult<DependencyView>>(projectId, async (projectData) => {
+        const view = findView(projectData, viewId);
+        if (!view) {
+          return {
+            result: {
+              success: false,
+              error: `Dependency view with ID '${viewId}' not found in project '${projectId}'`,
+              code: 'NOT_FOUND',
+            },
+            shouldSave: false,
+          };
+        }
+
+        if (data.fromTaskId === data.toTaskId) {
+          return {
+            result: {
+              success: false,
+              error: 'A task cannot depend on itself',
+              code: 'VALIDATION_ERROR',
+            },
+            shouldSave: false,
+          };
+        }
+
+        const nodeIds = new Set(view.nodes.map((node) => node.taskId));
+        if (!nodeIds.has(data.fromTaskId) || !nodeIds.has(data.toTaskId)) {
+          return {
+            result: {
+              success: false,
+              error: 'Both tasks must be present in the dependency view before connecting them',
+              code: 'VALIDATION_ERROR',
+            },
+            shouldSave: false,
+          };
+        }
+
+        const duplicateEdge = view.edges.find(
+          (edge) => edge.fromTaskId === data.fromTaskId && edge.toTaskId === data.toTaskId
+        );
+        if (duplicateEdge) {
+          return {
+            result: {
+              success: false,
+              error: 'That dependency already exists in the view',
+              code: 'DUPLICATE_ERROR',
+            },
+            shouldSave: false,
+          };
+        }
+
+        const adjacency = buildAdjacency(view);
+        if (canReach(adjacency, data.toTaskId, data.fromTaskId)) {
+          return {
+            result: {
+              success: false,
+              error: 'Adding this dependency would create a cycle',
+              code: 'VALIDATION_ERROR',
+            },
+            shouldSave: false,
+          };
+        }
+
+        const now = new Date().toISOString();
+        const edge: DependencyViewEdge = {
+          id: generateDependencyViewEdgeId(),
+          fromTaskId: data.fromTaskId,
+          toTaskId: data.toTaskId,
+          kind: 'hard',
+          createdAt: now,
+        };
+
+        view.edges.push(edge);
+        view.updatedAt = now;
+        view.revision += 1;
+        projectData.project.updatedAt = now;
+
+        return {
+          result: { success: true, data: cloneView(view) },
+          shouldSave: true,
+        };
+      });
+
+      if (result === null) {
         return {
           success: false,
           error: `Project with ID '${projectId}' not found`,
@@ -553,68 +783,7 @@ export class DependencyViewService {
         };
       }
 
-      const view = findView(projectData, viewId);
-      if (!view) {
-        return {
-          success: false,
-          error: `Dependency view with ID '${viewId}' not found in project '${projectId}'`,
-          code: 'NOT_FOUND',
-        };
-      }
-
-      if (data.fromTaskId === data.toTaskId) {
-        return {
-          success: false,
-          error: 'A task cannot depend on itself',
-          code: 'VALIDATION_ERROR',
-        };
-      }
-
-      const nodeIds = new Set(view.nodes.map((node) => node.taskId));
-      if (!nodeIds.has(data.fromTaskId) || !nodeIds.has(data.toTaskId)) {
-        return {
-          success: false,
-          error: 'Both tasks must be present in the dependency view before connecting them',
-          code: 'VALIDATION_ERROR',
-        };
-      }
-
-      const duplicateEdge = view.edges.find(
-        (edge) => edge.fromTaskId === data.fromTaskId && edge.toTaskId === data.toTaskId
-      );
-      if (duplicateEdge) {
-        return {
-          success: false,
-          error: 'That dependency already exists in the view',
-          code: 'DUPLICATE_ERROR',
-        };
-      }
-
-      const adjacency = buildAdjacency(view);
-      if (canReach(adjacency, data.toTaskId, data.fromTaskId)) {
-        return {
-          success: false,
-          error: 'Adding this dependency would create a cycle',
-          code: 'VALIDATION_ERROR',
-        };
-      }
-
-      const now = new Date().toISOString();
-      const edge: DependencyViewEdge = {
-        id: generateDependencyViewEdgeId(),
-        fromTaskId: data.fromTaskId,
-        toTaskId: data.toTaskId,
-        kind: 'hard',
-        createdAt: now,
-      };
-
-      view.edges.push(edge);
-      view.updatedAt = now;
-      view.revision += 1;
-      projectData.project.updatedAt = now;
-
-      await this.saveProject(projectId, projectData);
-      return { success: true, data: cloneView(view) };
+      return result;
     } catch (error) {
       return {
         success: false,
@@ -626,8 +795,44 @@ export class DependencyViewService {
 
   async removeEdge(projectId: string, viewId: string, edgeId: string): Promise<ServiceResult<DependencyView>> {
     try {
-      const projectData = await this.storage.readProject(projectId);
-      if (!projectData) {
+      const result = await this.storage.mutateProject<ServiceResult<DependencyView>>(projectId, async (projectData) => {
+        const view = findView(projectData, viewId);
+        if (!view) {
+          return {
+            result: {
+              success: false,
+              error: `Dependency view with ID '${viewId}' not found in project '${projectId}'`,
+              code: 'NOT_FOUND',
+            },
+            shouldSave: false,
+          };
+        }
+
+        const edgeIndex = view.edges.findIndex((edge) => edge.id === edgeId);
+        if (edgeIndex === -1) {
+          return {
+            result: {
+              success: false,
+              error: `Dependency edge with ID '${edgeId}' not found in view '${viewId}'`,
+              code: 'NOT_FOUND',
+            },
+            shouldSave: false,
+          };
+        }
+
+        view.edges.splice(edgeIndex, 1);
+        const now = new Date().toISOString();
+        view.updatedAt = now;
+        view.revision += 1;
+        projectData.project.updatedAt = now;
+
+        return {
+          result: { success: true, data: cloneView(view) },
+          shouldSave: true,
+        };
+      });
+
+      if (result === null) {
         return {
           success: false,
           error: `Project with ID '${projectId}' not found`,
@@ -635,32 +840,7 @@ export class DependencyViewService {
         };
       }
 
-      const view = findView(projectData, viewId);
-      if (!view) {
-        return {
-          success: false,
-          error: `Dependency view with ID '${viewId}' not found in project '${projectId}'`,
-          code: 'NOT_FOUND',
-        };
-      }
-
-      const edgeIndex = view.edges.findIndex((edge) => edge.id === edgeId);
-      if (edgeIndex === -1) {
-        return {
-          success: false,
-          error: `Dependency edge with ID '${edgeId}' not found in view '${viewId}'`,
-          code: 'NOT_FOUND',
-        };
-      }
-
-      view.edges.splice(edgeIndex, 1);
-      const now = new Date().toISOString();
-      view.updatedAt = now;
-      view.revision += 1;
-      projectData.project.updatedAt = now;
-
-      await this.saveProject(projectId, projectData);
-      return { success: true, data: cloneView(view) };
+      return result;
     } catch (error) {
       return {
         success: false,
@@ -701,10 +881,5 @@ export class DependencyViewService {
         code: 'INTERNAL_ERROR',
       };
     }
-  }
-
-  private async saveProject(projectId: string, projectData: ProjectData): Promise<void> {
-    const filePath = this.storage.getFilePath(projectId);
-    await writeJsonFile(filePath, projectData);
   }
 }

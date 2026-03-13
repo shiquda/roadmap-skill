@@ -223,6 +223,46 @@ export const updateDependencyViewNodeTool = {
   },
 };
 
+export const batchUpdateDependencyViewNodesTool = {
+  name: 'batch_update_dependency_view_nodes',
+  description: 'Update multiple task node layouts or notes inside a dependency planning view. Returns summary by default; set verbose=true for full data.',
+  inputSchema: z.object({
+    projectId: z.string().min(1, 'Project ID is required'),
+    viewId: z.string().min(1, 'View ID is required'),
+    nodes: z.array(z.object({
+      taskId: z.string().min(1, 'Task ID is required'),
+      x: z.number().optional(),
+      y: z.number().optional(),
+      collapsed: z.boolean().optional(),
+      note: NullableString.optional(),
+    })).min(1, 'At least one node update is required'),
+    verbose: z.boolean().optional(),
+  }),
+  async execute(input: {
+    projectId: string;
+    viewId: string;
+    nodes: Array<{
+      taskId: string;
+      x?: number;
+      y?: number;
+      collapsed?: boolean;
+      note?: string | null;
+    }>;
+    verbose?: boolean;
+  }) {
+    const { projectId, viewId, verbose, ...nodeData } = input;
+    const result = await dependencyViewService.batchUpdateNodes(projectId, viewId, nodeData);
+    if (!result.success) {
+      return result;
+    }
+
+    return {
+      success: true,
+      data: verbose ? result.data : toDependencyViewSummary(result.data),
+    };
+  },
+};
+
 export const removeTaskFromDependencyViewTool = {
   name: 'remove_task_from_dependency_view',
   description: 'Remove a task node from a dependency planning view. Connected edges are removed too. Returns summary by default; set verbose=true for full data.',

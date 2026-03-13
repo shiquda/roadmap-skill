@@ -31,6 +31,7 @@ export {
   deleteDependencyViewTool,
   addTaskToDependencyViewTool,
   updateDependencyViewNodeTool,
+  batchUpdateDependencyViewNodesTool,
   removeTaskFromDependencyViewTool,
   addDependencyViewEdgeTool,
   removeDependencyViewEdgeTool,

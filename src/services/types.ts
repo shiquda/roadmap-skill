@@ -97,6 +97,16 @@ export interface UpdateDependencyViewNodeData {
   note?: string | null;
 }
 
+export interface BatchUpdateDependencyViewNodesData {
+  nodes: Array<{
+    taskId: string;
+    x?: number;
+    y?: number;
+    collapsed?: boolean;
+    note?: string | null;
+  }>;
+}
+
 export interface AddDependencyViewEdgeData {
   fromTaskId: string;
   toTaskId: string;
@@ -190,6 +200,11 @@ export interface IDependencyViewService {
     viewId: string,
     taskId: string,
     data: UpdateDependencyViewNodeData
+  ): Promise<ServiceResult<DependencyView>>;
+  batchUpdateNodes(
+    projectId: string,
+    viewId: string,
+    data: BatchUpdateDependencyViewNodesData
   ): Promise<ServiceResult<DependencyView>>;
   removeNode(projectId: string, viewId: string, taskId: string): Promise<ServiceResult<DependencyView>>;
   addEdge(

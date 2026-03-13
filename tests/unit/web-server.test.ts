@@ -5,7 +5,7 @@ import { join } from 'path';
 import { createServer as createNetServer } from 'net';
 import type { Server } from 'http';
 import type { ProjectData } from '../../src/models/index.js';
-import { writeJsonFile, ensureDir } from '../../src/utils/file-helpers.js';
+import { readJsonFile, writeJsonFile, ensureDir } from '../../src/utils/file-helpers.js';
 import * as path from 'path';
 
 async function getAvailablePort(): Promise<number> {
@@ -328,6 +328,114 @@ describe('Web Server API', () => {
       expect(cycleRes.status).toBe(400);
       const cycleData = await cycleRes.json() as any;
       expect(cycleData.error).toContain('cycle');
+    });
+
+    it('should keep project JSON valid during concurrent dependency edge writes', async () => {
+      const createdTasks = await Promise.all(
+        Array.from({ length: 6 }, (_, index) =>
+          fetch(api('/api/tasks'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              projectId,
+              title: `Task ${index + 1}`,
+              description: '',
+              priority: 'medium',
+              tags: [],
+            }),
+          }).then(async (response) => response.json() as Promise<{ data: { id: string } }>)
+        )
+      );
+
+      const createViewRes = await fetch(api(`/api/projects/${projectId}/dependency-views`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Concurrent Graph', description: '' }),
+      });
+      const { data: view } = await createViewRes.json() as { data: { id: string } };
+
+      await Promise.all(
+        createdTasks.map((task) =>
+          fetch(api(`/api/projects/${projectId}/dependency-views/${view.id}/nodes`), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ taskId: task.data.id }),
+          })
+        )
+      );
+
+      const sourceTaskId = createdTasks[0].data.id;
+      const edgeResponses = await Promise.all(
+        createdTasks.slice(1).map((task) =>
+          fetch(api(`/api/projects/${projectId}/dependency-views/${view.id}/edges`), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fromTaskId: sourceTaskId, toTaskId: task.data.id }),
+          })
+        )
+      );
+
+      edgeResponses.forEach((response) => {
+        expect(response.status).toBe(200);
+      });
+
+      const savedProject = await readJsonFile<ProjectData>(path.join(tempDir, `${projectId}.json`));
+      expect(savedProject.dependencyViews).toHaveLength(1);
+      expect(savedProject.dependencyViews[0].edges).toHaveLength(5);
+    });
+
+    it('should batch update node positions in a single request', async () => {
+      const createTaskA = await fetch(api('/api/tasks'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, title: 'Task A', description: '', priority: 'medium', tags: [] }),
+      });
+      const createTaskB = await fetch(api('/api/tasks'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, title: 'Task B', description: '', priority: 'medium', tags: [] }),
+      });
+
+      const { data: taskA } = await createTaskA.json() as any;
+      const { data: taskB } = await createTaskB.json() as any;
+
+      const createViewRes = await fetch(api(`/api/projects/${projectId}/dependency-views`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Batch Layout', description: '' }),
+      });
+      const { data: view } = await createViewRes.json() as any;
+
+      await fetch(api(`/api/projects/${projectId}/dependency-views/${view.id}/nodes`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId: taskA.id }),
+      });
+      await fetch(api(`/api/projects/${projectId}/dependency-views/${view.id}/nodes`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId: taskB.id }),
+      });
+
+      const batchRes = await fetch(api(`/api/projects/${projectId}/dependency-views/${view.id}/nodes`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nodes: [
+            { taskId: taskA.id, x: 320, y: 120 },
+            { taskId: taskB.id, x: 640, y: 240 },
+          ],
+        }),
+      });
+
+      expect(batchRes.status).toBe(200);
+      const batchData = await batchRes.json() as any;
+      expect(batchData.success).toBe(true);
+
+      const savedProject = await readJsonFile<ProjectData>(path.join(tempDir, `${projectId}.json`));
+      const savedView = savedProject.dependencyViews.find((item) => item.id === view.id);
+      expect(savedView?.nodes.find((node) => node.taskId === taskA.id)?.x).toBe(320);
+      expect(savedView?.nodes.find((node) => node.taskId === taskB.id)?.y).toBe(240);
     });
   });
 

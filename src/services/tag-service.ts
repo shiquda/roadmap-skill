@@ -4,7 +4,7 @@
  */
 
 import type { ProjectStorage } from '../storage/index.js';
-import type { Tag, ProjectData } from '../models/index.js';
+import type { Tag } from '../models/index.js';
 import type {
   ServiceResult,
   CreateTagData,
@@ -78,8 +78,55 @@ export class TagService {
    */
   async create(projectId: string, data: CreateTagData): Promise<ServiceResult<Tag>> {
     try {
-      const projectData = await this.storage.readProject(projectId);
-      if (!projectData) {
+      const result = await this.storage.mutateProject<ServiceResult<Tag>>(projectId, async (projectData) => {
+        const existingTag = projectData.tags.find(
+          (t) => t.name.toLowerCase() === data.name.toLowerCase()
+        );
+        if (existingTag) {
+          return {
+            result: {
+              success: false,
+              error: `Tag with name '${data.name}' already exists in this project`,
+              code: 'DUPLICATE_ERROR',
+            },
+            shouldSave: false,
+          };
+        }
+
+        const resolvedColor = resolveTagColor(data.name, data.color);
+        if (!HEX_COLOR_PATTERN.test(resolvedColor)) {
+          return {
+            result: {
+              success: false,
+              error: `Color must be a valid hex code (e.g., #FF5733), received '${resolvedColor}'`,
+              code: 'VALIDATION_ERROR',
+            },
+            shouldSave: false,
+          };
+        }
+
+        const now = new Date().toISOString();
+        const tag: Tag = {
+          id: generateTagId(),
+          name: data.name,
+          color: resolvedColor,
+          description: data.description || '',
+          createdAt: now,
+        };
+
+        projectData.tags.push(tag);
+        projectData.project.updatedAt = now;
+
+        return {
+          result: {
+            success: true,
+            data: tag,
+          },
+          shouldSave: true,
+        };
+      });
+
+      if (result === null) {
         return {
           success: false,
           error: `Project with ID '${projectId}' not found`,
@@ -87,45 +134,7 @@ export class TagService {
         };
       }
 
-      // Check for duplicate tag name (case-insensitive)
-      const existingTag = projectData.tags.find(
-        (t) => t.name.toLowerCase() === data.name.toLowerCase()
-      );
-      if (existingTag) {
-        return {
-          success: false,
-          error: `Tag with name '${data.name}' already exists in this project`,
-          code: 'DUPLICATE_ERROR',
-        };
-      }
-
-      const resolvedColor = resolveTagColor(data.name, data.color);
-      if (!HEX_COLOR_PATTERN.test(resolvedColor)) {
-        return {
-          success: false,
-          error: `Color must be a valid hex code (e.g., #FF5733), received '${resolvedColor}'`,
-          code: 'VALIDATION_ERROR',
-        };
-      }
-
-      const now = new Date().toISOString();
-      const tag: Tag = {
-        id: generateTagId(),
-        name: data.name,
-        color: resolvedColor,
-        description: data.description || '',
-        createdAt: now,
-      };
-
-      projectData.tags.push(tag);
-      projectData.project.updatedAt = now;
-
-      await this.saveProjectData(projectId, projectData);
-
-      return {
-        success: true,
-        data: tag,
-      };
+      return result;
     } catch (error) {
       return {
         success: false,
@@ -187,8 +196,78 @@ export class TagService {
     data: UpdateTagData
   ): Promise<ServiceResult<Tag>> {
     try {
-      const projectData = await this.storage.readProject(projectId);
-      if (!projectData) {
+      const result = await this.storage.mutateProject<ServiceResult<Tag>>(projectId, async (projectData) => {
+        const tagIndex = projectData.tags.findIndex((t) => t.id === tagId);
+        if (tagIndex === -1) {
+          return {
+            result: {
+              success: false,
+              error: `Tag with ID '${tagId}' not found in project '${projectId}'`,
+              code: 'NOT_FOUND',
+            },
+            shouldSave: false,
+          };
+        }
+
+        if (Object.keys(data).length === 0) {
+          return {
+            result: {
+              success: false,
+              error: 'At least one field to update is required',
+              code: 'VALIDATION_ERROR',
+            },
+            shouldSave: false,
+          };
+        }
+
+        if (data.name) {
+          const existingTag = projectData.tags.find(
+            (t) => t.name.toLowerCase() === data.name!.toLowerCase() && t.id !== tagId
+          );
+          if (existingTag) {
+            return {
+              result: {
+                success: false,
+                error: `Tag with name '${data.name}' already exists in this project`,
+                code: 'DUPLICATE_ERROR',
+              },
+              shouldSave: false,
+            };
+          }
+        }
+
+        if (data.color && !HEX_COLOR_PATTERN.test(data.color)) {
+          return {
+            result: {
+              success: false,
+              error: `Color must be a valid hex code (e.g., #FF5733), received '${data.color}'`,
+              code: 'VALIDATION_ERROR',
+            },
+            shouldSave: false,
+          };
+        }
+
+        const existingTag = projectData.tags[tagIndex];
+        const updatedTag: Tag = {
+          ...existingTag,
+          ...data,
+          id: existingTag.id,
+          createdAt: existingTag.createdAt,
+        };
+
+        projectData.tags[tagIndex] = updatedTag;
+        projectData.project.updatedAt = new Date().toISOString();
+
+        return {
+          result: {
+            success: true,
+            data: updatedTag,
+          },
+          shouldSave: true,
+        };
+      });
+
+      if (result === null) {
         return {
           success: false,
           error: `Project with ID '${projectId}' not found`,
@@ -196,66 +275,7 @@ export class TagService {
         };
       }
 
-      const tagIndex = projectData.tags.findIndex((t) => t.id === tagId);
-      if (tagIndex === -1) {
-        return {
-          success: false,
-          error: `Tag with ID '${tagId}' not found in project '${projectId}'`,
-          code: 'NOT_FOUND',
-        };
-      }
-
-      // Check if there is any field to update
-      if (Object.keys(data).length === 0) {
-        return {
-          success: false,
-          error: 'At least one field to update is required',
-          code: 'VALIDATION_ERROR',
-        };
-      }
-
-      // Check for duplicate name if updating name (case-insensitive)
-      if (data.name) {
-        const existingTag = projectData.tags.find(
-          (t) =>
-            t.name.toLowerCase() === data.name!.toLowerCase() && t.id !== tagId
-        );
-        if (existingTag) {
-          return {
-            success: false,
-            error: `Tag with name '${data.name}' already exists in this project`,
-            code: 'DUPLICATE_ERROR',
-          };
-        }
-      }
-
-      if (data.color && !HEX_COLOR_PATTERN.test(data.color)) {
-        return {
-          success: false,
-          error: `Color must be a valid hex code (e.g., #FF5733), received '${data.color}'`,
-          code: 'VALIDATION_ERROR',
-        };
-      }
-
-      const now = new Date().toISOString();
-      const existingTag = projectData.tags[tagIndex];
-
-      const updatedTag: Tag = {
-        ...existingTag,
-        ...data,
-        id: existingTag.id,
-        createdAt: existingTag.createdAt,
-      };
-
-      projectData.tags[tagIndex] = updatedTag;
-      projectData.project.updatedAt = now;
-
-      await this.saveProjectData(projectId, projectData);
-
-      return {
-        success: true,
-        data: updatedTag,
-      };
+      return result;
     } catch (error) {
       return {
         success: false,
@@ -274,8 +294,49 @@ export class TagService {
    */
   async delete(projectId: string, tagId: string): Promise<ServiceResult<DeleteTagResult>> {
     try {
-      const projectData = await this.storage.readProject(projectId);
-      if (!projectData) {
+      const result = await this.storage.mutateProject<ServiceResult<DeleteTagResult>>(projectId, async (projectData) => {
+        const tagIndex = projectData.tags.findIndex((t) => t.id === tagId);
+        if (tagIndex === -1) {
+          return {
+            result: {
+              success: false,
+              error: `Tag with ID '${tagId}' not found in project '${projectId}'`,
+              code: 'NOT_FOUND',
+            },
+            shouldSave: false,
+          };
+        }
+
+        const tag = projectData.tags[tagIndex];
+        const now = new Date().toISOString();
+        let tasksUpdated = 0;
+
+        for (const task of projectData.tasks) {
+          const tagIndexInTask = task.tags.indexOf(tagId);
+          if (tagIndexInTask !== -1) {
+            task.tags.splice(tagIndexInTask, 1);
+            task.updatedAt = now;
+            tasksUpdated++;
+          }
+        }
+
+        projectData.tags.splice(tagIndex, 1);
+        projectData.project.updatedAt = now;
+
+        return {
+          result: {
+            success: true,
+            data: {
+              deleted: true,
+              tag,
+              tasksUpdated,
+            },
+          },
+          shouldSave: true,
+        };
+      });
+
+      if (result === null) {
         return {
           success: false,
           error: `Project with ID '${projectId}' not found`,
@@ -283,42 +344,7 @@ export class TagService {
         };
       }
 
-      const tagIndex = projectData.tags.findIndex((t) => t.id === tagId);
-      if (tagIndex === -1) {
-        return {
-          success: false,
-          error: `Tag with ID '${tagId}' not found in project '${projectId}'`,
-          code: 'NOT_FOUND',
-        };
-      }
-
-      const tag = projectData.tags[tagIndex];
-
-      // Remove tag from all tasks that use it
-      const now = new Date().toISOString();
-      let tasksUpdated = 0;
-      for (const task of projectData.tasks) {
-        const tagIndexInTask = task.tags.indexOf(tagId);
-        if (tagIndexInTask !== -1) {
-          task.tags.splice(tagIndexInTask, 1);
-          task.updatedAt = now;
-          tasksUpdated++;
-        }
-      }
-
-      projectData.tags.splice(tagIndex, 1);
-      projectData.project.updatedAt = now;
-
-      await this.saveProjectData(projectId, projectData);
-
-      return {
-        success: true,
-        data: {
-          deleted: true,
-          tag,
-          tasksUpdated,
-        },
-      };
+      return result;
     } catch (error) {
       return {
         success: false,
@@ -379,16 +405,5 @@ export class TagService {
         code: 'INTERNAL_ERROR',
       };
     }
-  }
-
-  /**
-   * Helper method to save project data
-   * @param projectId - The project ID
-   * @param projectData - The project data to save
-   */
-  private async saveProjectData(projectId: string, projectData: ProjectData): Promise<void> {
-    const filePath = this.storage.getFilePath(projectId);
-    const { writeJsonFile } = await import('../utils/file-helpers.js');
-    await writeJsonFile(filePath, projectData);
   }
 }
