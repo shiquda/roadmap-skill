@@ -337,6 +337,38 @@ export const removeDependencyViewEdgeTool = {
   },
 };
 
+export const updateDependencyViewEdgeTool = {
+  name: 'update_dependency_view_edge',
+  description: 'Update the direction of a dependency edge inside a dependency planning view. Returns summary by default; set verbose=true for full data.',
+  inputSchema: z.object({
+    projectId: z.string().min(1, 'Project ID is required'),
+    viewId: z.string().min(1, 'View ID is required'),
+    edgeId: z.string().min(1, 'Edge ID is required'),
+    fromTaskId: z.string().min(1).optional(),
+    toTaskId: z.string().min(1).optional(),
+    verbose: z.boolean().optional(),
+  }),
+  async execute(input: {
+    projectId: string;
+    viewId: string;
+    edgeId: string;
+    fromTaskId?: string;
+    toTaskId?: string;
+    verbose?: boolean;
+  }) {
+    const { projectId, viewId, edgeId, verbose, ...edgeData } = input;
+    const result = await dependencyViewService.updateEdge(projectId, viewId, edgeId, edgeData);
+    if (!result.success) {
+      return result;
+    }
+
+    return {
+      success: true,
+      data: verbose ? result.data : toDependencyViewSummary(result.data),
+    };
+  },
+};
+
 export const analyzeDependencyViewTool = {
   name: 'analyze_dependency_view',
   description: 'Analyze a dependency planning view and return topological layers, ready tasks, blocked tasks, roots, leaves, and isolated tasks.',

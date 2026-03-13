@@ -36,6 +36,7 @@ import {
   listDependencyViewsTool,
   removeDependencyViewEdgeTool,
   removeTaskFromDependencyViewTool,
+  updateDependencyViewEdgeTool,
 } from '../../src/tools/dependency-view-tools.js';
 
 class TestableStorage {
@@ -979,6 +980,66 @@ describe('Tools', () => {
       });
 
       expect(deleteViewResult.success).toBe(true);
+    });
+
+    it('should update dependency edge direction atomically', async () => {
+      const project = await createTestProject('Dependency Project');
+      const taskA = await createScopedTestTask(project.project.id, 'Task A');
+      const taskB = await createScopedTestTask(project.project.id, 'Task B');
+
+      const createViewResult = await createDependencyViewTool.execute({
+        projectId: project.project.id,
+        name: 'Atomic Reverse',
+        description: '',
+        verbose: true,
+      });
+
+      expect(createViewResult.success).toBe(true);
+      if (!createViewResult.success) {
+        throw new Error(createViewResult.error);
+      }
+
+      await addTaskToDependencyViewTool.execute({
+        projectId: project.project.id,
+        viewId: createViewResult.data.id,
+        taskId: taskA.id,
+      });
+      await addTaskToDependencyViewTool.execute({
+        projectId: project.project.id,
+        viewId: createViewResult.data.id,
+        taskId: taskB.id,
+      });
+
+      const addEdgeResult = await addDependencyViewEdgeTool.execute({
+        projectId: project.project.id,
+        viewId: createViewResult.data.id,
+        fromTaskId: taskA.id,
+        toTaskId: taskB.id,
+        verbose: true,
+      });
+
+      expect(addEdgeResult.success).toBe(true);
+      if (!addEdgeResult.success) {
+        throw new Error(addEdgeResult.error);
+      }
+
+      const updatedEdgeResult = await updateDependencyViewEdgeTool.execute({
+        projectId: project.project.id,
+        viewId: createViewResult.data.id,
+        edgeId: addEdgeResult.data.edges[0].id,
+        fromTaskId: taskB.id,
+        toTaskId: taskA.id,
+        verbose: true,
+      });
+
+      expect(updatedEdgeResult.success).toBe(true);
+      if (!updatedEdgeResult.success) {
+        throw new Error(updatedEdgeResult.error);
+      }
+
+      expect(updatedEdgeResult.data.edges).toHaveLength(1);
+      expect(updatedEdgeResult.data.edges[0].fromTaskId).toBe(taskB.id);
+      expect(updatedEdgeResult.data.edges[0].toTaskId).toBe(taskA.id);
     });
 
     it('should reject cyclic edges in dependency views', async () => {

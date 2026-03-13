@@ -112,6 +112,11 @@ export interface AddDependencyViewEdgeData {
   toTaskId: string;
 }
 
+export interface UpdateDependencyViewEdgeData {
+  fromTaskId?: string;
+  toTaskId?: string;
+}
+
 // ============================================================================
 // Tag Service Types
 // ============================================================================
@@ -211,6 +216,12 @@ export interface IDependencyViewService {
     projectId: string,
     viewId: string,
     data: AddDependencyViewEdgeData
+  ): Promise<ServiceResult<DependencyView>>;
+  updateEdge(
+    projectId: string,
+    viewId: string,
+    edgeId: string,
+    data: UpdateDependencyViewEdgeData
   ): Promise<ServiceResult<DependencyView>>;
   removeEdge(projectId: string, viewId: string, edgeId: string): Promise<ServiceResult<DependencyView>>;
   analyze(projectId: string, viewId: string): Promise<ServiceResult<DependencyViewAnalysis>>;

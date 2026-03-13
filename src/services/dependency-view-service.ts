@@ -12,6 +12,7 @@ import type {
   BatchUpdateDependencyViewNodesData,
   CreateDependencyViewData,
   ServiceResult,
+  UpdateDependencyViewEdgeData,
   UpdateDependencyViewData,
   UpdateDependencyViewNodeData,
 } from './types.js';
@@ -788,6 +789,138 @@ export class DependencyViewService {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to add dependency edge',
+        code: 'INTERNAL_ERROR',
+      };
+    }
+  }
+
+  async updateEdge(
+    projectId: string,
+    viewId: string,
+    edgeId: string,
+    data: UpdateDependencyViewEdgeData
+  ): Promise<ServiceResult<DependencyView>> {
+    try {
+      const result = await this.storage.mutateProject<ServiceResult<DependencyView>>(projectId, async (projectData) => {
+        if (Object.keys(data).length === 0) {
+          return {
+            result: {
+              success: false,
+              error: 'At least one edge field to update is required',
+              code: 'VALIDATION_ERROR',
+            },
+            shouldSave: false,
+          };
+        }
+
+        const view = findView(projectData, viewId);
+        if (!view) {
+          return {
+            result: {
+              success: false,
+              error: `Dependency view with ID '${viewId}' not found in project '${projectId}'`,
+              code: 'NOT_FOUND',
+            },
+            shouldSave: false,
+          };
+        }
+
+        const edge = view.edges.find((item) => item.id === edgeId);
+        if (!edge) {
+          return {
+            result: {
+              success: false,
+              error: `Dependency edge with ID '${edgeId}' not found in view '${viewId}'`,
+              code: 'NOT_FOUND',
+            },
+            shouldSave: false,
+          };
+        }
+
+        const nextFromTaskId = data.fromTaskId ?? edge.fromTaskId;
+        const nextToTaskId = data.toTaskId ?? edge.toTaskId;
+
+        if (nextFromTaskId === nextToTaskId) {
+          return {
+            result: {
+              success: false,
+              error: 'A task cannot depend on itself',
+              code: 'VALIDATION_ERROR',
+            },
+            shouldSave: false,
+          };
+        }
+
+        const nodeIds = new Set(view.nodes.map((node) => node.taskId));
+        if (!nodeIds.has(nextFromTaskId) || !nodeIds.has(nextToTaskId)) {
+          return {
+            result: {
+              success: false,
+              error: 'Both tasks must be present in the dependency view before updating an edge',
+              code: 'VALIDATION_ERROR',
+            },
+            shouldSave: false,
+          };
+        }
+
+        const duplicateEdge = view.edges.find(
+          (item) => item.id !== edgeId && item.fromTaskId === nextFromTaskId && item.toTaskId === nextToTaskId
+        );
+        if (duplicateEdge) {
+          return {
+            result: {
+              success: false,
+              error: 'That dependency already exists in the view',
+              code: 'DUPLICATE_ERROR',
+            },
+            shouldSave: false,
+          };
+        }
+
+        const adjacency = buildAdjacency({
+          ...view,
+          edges: view.edges
+            .filter((item) => item.id !== edgeId)
+            .map((item) => ({ ...item })),
+        });
+        if (canReach(adjacency, nextToTaskId, nextFromTaskId)) {
+          return {
+            result: {
+              success: false,
+              error: 'Updating this dependency would create a cycle',
+              code: 'VALIDATION_ERROR',
+            },
+            shouldSave: false,
+          };
+        }
+
+        edge.fromTaskId = nextFromTaskId;
+        edge.toTaskId = nextToTaskId;
+
+        const now = new Date().toISOString();
+        view.updatedAt = now;
+        view.revision += 1;
+        projectData.project.updatedAt = now;
+
+        return {
+          result: { success: true, data: cloneView(view) },
+          shouldSave: true,
+        };
+      });
+
+      if (result === null) {
+        return {
+          success: false,
+          error: `Project with ID '${projectId}' not found`,
+          code: 'NOT_FOUND',
+        };
+      }
+
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to update dependency edge',
         code: 'INTERNAL_ERROR',
       };
     }

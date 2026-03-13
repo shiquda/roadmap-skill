@@ -227,6 +227,25 @@ export function createServer(port: number = 7860): Promise<Server> {
       }
     });
 
+    app.put('/api/projects/:projectId/dependency-views/:viewId/edges/:edgeId', async (req, res) => {
+      try {
+        const result = await dependencyViewService.updateEdge(
+          req.params.projectId,
+          req.params.viewId,
+          req.params.edgeId,
+          req.body
+        );
+        if (!result.success) {
+          const statusCode = result.code === 'NOT_FOUND' ? 404 : 400;
+          res.status(statusCode).json({ error: result.error });
+          return;
+        }
+        res.json({ success: true, data: result.data });
+      } catch (error) {
+        res.status(500).json({ error: (error as Error).message });
+      }
+    });
+
     app.delete('/api/projects/:projectId/dependency-views/:viewId/edges/:edgeId', async (req, res) => {
       try {
         const result = await dependencyViewService.removeEdge(req.params.projectId, req.params.viewId, req.params.edgeId);

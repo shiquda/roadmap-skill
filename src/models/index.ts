@@ -176,6 +176,11 @@ export interface AddDependencyViewEdgeInput {
   toTaskId: string;
 }
 
+export interface UpdateDependencyViewEdgeInput {
+  fromTaskId?: string;
+  toTaskId?: string;
+}
+
 export interface DependencyViewAnalysis {
   viewId: string;
   revision: number;

@@ -34,6 +34,7 @@ export {
   batchUpdateDependencyViewNodesTool,
   removeTaskFromDependencyViewTool,
   addDependencyViewEdgeTool,
+  updateDependencyViewEdgeTool,
   removeDependencyViewEdgeTool,
   analyzeDependencyViewTool,
 } from './dependency-view-tools.js';
