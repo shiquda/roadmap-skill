@@ -1,12 +1,16 @@
 # Roadmap Skill
 
 <p align="center">
-  <img src="./imgs/roadmap-skill-web.png" alt="Roadmap Skill Kanban Board" width="900">
+  <img src="./imgs/roadmap-skill-web.png" alt="Roadmap Skill web workspace with kanban and graph views" width="900">
+</p>
+
+<p align="center">
+  <sub>The local planning workspace: status in Kanban, execution order in Graph View.</sub>
 </p>
 
 <p align="center">
   <strong>Shared roadmap for humans and AI Agents</strong><br>
-  Visual kanban for you. MCP server for Agents. Local-first.
+  Visual kanban and graph views for you. MCP server for Agents. Local-first.
 </p>
 
 <p align="center">
@@ -32,9 +36,36 @@
 
 **Agent-native** — Built as an MCP server. Your AI can create, update, and query tasks directly in conversation.
 
-**Lightweight Kanban** — Open `localhost:7860` when you feel like it, or ask your Agent to open it with `open_web_interface`. Or just stay in chat. All three work.
+**Visual workspace** — Open `localhost:7860` when you feel like it, or ask your Agent to open it with `open_web_interface`. Kanban for status, Graph View for sequencing. Or just stay in chat. All three work.
 
 **Local-first** — Your data lives on your machine. No accounts, no cloud sync, no vendor lock-in.
+
+---
+
+## New in v0.3.0: Graph View
+
+Graph View is one of the headline features in `v0.3.0`.
+
+<p align="center">
+  <img src="./imgs/roadmap-graph.png" alt="Roadmap Skill graph view for dependency planning" width="900">
+</p>
+
+<p align="center">
+  <sub>Graph View turns roadmap tasks into a dependency map, so you can inspect order, blockers, and ready work at a glance.</sub>
+</p>
+
+Kanban is great for tracking status. Graph View is for understanding execution order.
+
+It helps you and your Agent answer questions like:
+
+- What has to happen first?
+- Which tasks are ready right now?
+- What is blocked by unfinished work?
+- Which dependency should be added, reversed, or removed?
+
+Instead of treating roadmap tasks as a flat list, Graph View turns them into a visual dependency map with node connections, ready/done states, detailed task cards, and export support. It is designed for planning sessions where sequencing matters just as much as status.
+
+If you are using Roadmap Skill as an MCP workspace, this is the view that makes agent-assisted planning feel concrete: your Agent can build and update dependency graphs in chat, and you can immediately inspect the structure visually in the web UI.
 
 ---
 
@@ -338,6 +369,10 @@ No tab switching. No copy-pasting. Just ask
 | Feature | Description |
 |--------|-------------|
 | **Kanban View** | Four columns: Todo, In Progress, Review, Done |
+| **Graph View** | Visual dependency map for sequencing work, spotting blockers, and reviewing execution order |
+| **Ready / Blocked Signals** | Quickly see which tasks are ready now and which ones still depend on unfinished work |
+| **Dependency Editing** | Add, reverse, and remove task dependencies directly from the planning graph |
+| **Graph Export** | Export dependency graphs as images for sharing, review, or release planning |
 | **Drag and Drop** | Drag tasks to update status, WYSIWYG |
 | **Quick Create** | Click "+" button on any column to instantly add tasks |
 | **Dual View** | Compact mode for overview, detailed mode for full info |
