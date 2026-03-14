@@ -59,7 +59,18 @@ interface Tag {
 type CardMode = 'compact' | 'detailed';
 type StatusFilter = 'all' | 'active' | 'completed';
 type TaskStatus = 'todo' | 'in-progress' | 'review' | 'done';
+type TaskPriority = 'critical' | 'high' | 'medium' | 'low';
 type WorkspaceMode = 'kanban' | 'dependency';
+
+interface CreateTaskInput {
+  projectId: string;
+  title: string;
+  description: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  dueDate?: string;
+  tags: string[];
+}
 
 function normalizeStatus(status: string): TaskStatus {
   const normalized = status.replace('_', '-');
@@ -77,8 +88,8 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: str
 };
 
 const PRIORITY_CONFIG: Record<string, { label: string; color: string; bgColor: string }> = {
-  critical: { label: 'Critical', color: 'text-rose-600', bgColor: 'bg-rose-50' },
-  high: { label: 'High', color: 'text-orange-600', bgColor: 'bg-orange-50' },
+  critical: { label: 'Critical', color: 'text-rose-700', bgColor: 'bg-rose-100' },
+  high: { label: 'High', color: 'text-amber-700', bgColor: 'bg-amber-100' },
   medium: { label: 'Medium', color: 'text-blue-600', bgColor: 'bg-blue-50' },
   low: { label: 'Low', color: 'text-emerald-600', bgColor: 'bg-emerald-50' },
 };
@@ -123,12 +134,25 @@ const App: React.FC = () => {
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
-  const [isProjectSidebarCollapsed, setIsProjectSidebarCollapsed] = useState(false);
+  const [isProjectSidebarCollapsed, setIsProjectSidebarCollapsed] = useState(
+    () => getItem<boolean>(STORAGE_KEYS.PROJECT_SIDEBAR_COLLAPSED) ?? false
+  );
   const [appMeta, setAppMeta] = useState<AppMeta>({
-    version: '0.0.0',
+    version: '',
     repositoryUrl: 'https://github.com/shiquda/roadmap-skill',
   });
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  const resetNewTaskForm = () => {
+    setNewTaskForm({
+      title: '',
+      description: '',
+      priority: 'medium',
+      dueDate: '',
+      showDueDate: false,
+      tags: [],
+    });
+  };
 
   // Load persisted state on mount
   useEffect(() => {
@@ -166,6 +190,10 @@ const App: React.FC = () => {
   }, [cardMode, workspaceMode]);
 
   useEffect(() => {
+    setItem(STORAGE_KEYS.PROJECT_SIDEBAR_COLLAPSED, isProjectSidebarCollapsed);
+  }, [isProjectSidebarCollapsed]);
+
+  useEffect(() => {
     fetch('/api/projects')
       .then(res => res.json())
       .then(data => {
@@ -178,7 +206,7 @@ const App: React.FC = () => {
       .then(res => res.json())
       .then(data => {
         const meta = data as Partial<AppMeta>;
-        if (meta.version && meta.repositoryUrl) {
+        if (meta.version && meta.version !== '0.0.0' && meta.repositoryUrl) {
           setAppMeta({ version: meta.version, repositoryUrl: meta.repositoryUrl });
         }
       })
@@ -192,8 +220,7 @@ const App: React.FC = () => {
     if (selectedProject) {
       params.append('projectId', selectedProject);
     }
-    // Include completed tasks when showing all or completed filter
-    if (statusFilter === 'all' || statusFilter === 'completed') {
+    if (workspaceMode === 'dependency' || statusFilter === 'all' || statusFilter === 'completed') {
       params.append('includeCompleted', 'true');
     }
     const queryString = params.toString();
@@ -212,7 +239,7 @@ const App: React.FC = () => {
         }));
         setTasks(normalized);
       });
-  }, [selectedProject, statusFilter]);
+  }, [selectedProject, statusFilter, workspaceMode]);
 
   useEffect(() => {
     if (selectedProject) {
@@ -525,6 +552,93 @@ const App: React.FC = () => {
     }
   };
 
+  const createTaskForProject = async ({
+    projectId,
+    title,
+    description,
+    status,
+    priority,
+    dueDate,
+    tags,
+  }: CreateTaskInput): Promise<Task | null> => {
+    const response = await fetch('/api/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        projectId,
+        title,
+        description,
+        status: normalizeStatus(status),
+        priority,
+        dueDate,
+        tags,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to create task.');
+    }
+
+    const result = await response.json() as { success?: boolean; data?: Task };
+    if (!result.success || !result.data) {
+      throw new Error('Failed to create task.');
+    }
+
+    const normalizedTask: Task = {
+      ...result.data,
+      status: normalizeStatus(result.data.status),
+      tags: result.data.tags || [],
+    };
+    const project = projects.find((item) => item.project.id === projectId)?.project;
+
+    if (!project) {
+      throw new Error('Project not found for the new task.');
+    }
+
+    setTasks((prev) => [...prev, { task: normalizedTask, project }]);
+    setProjects((prev) => prev.map((item) =>
+      item.project.id === projectId
+        ? { ...item, taskCount: item.taskCount + 1 }
+        : item
+    ));
+
+    return normalizedTask;
+  };
+
+  const updateTaskStatus = async (taskId: string, newStatus: TaskStatus): Promise<boolean> => {
+    const taskItem = tasks.find((item) => item.task.id === taskId);
+    const normalizedStatus = normalizeStatus(newStatus);
+    if (!taskItem || normalizeStatus(taskItem.task.status) === normalizedStatus) {
+      return true;
+    }
+
+    try {
+      const response = await fetch('/api/tasks', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: taskItem.project.id,
+          taskId,
+          status: normalizedStatus,
+        }),
+      });
+
+      if (!response.ok) {
+        return false;
+      }
+
+      setTasks((prev) => prev.map((item) =>
+        item.task.id === taskId
+          ? { ...item, task: { ...item.task, status: normalizedStatus } }
+          : item
+      ));
+      return true;
+    } catch (error) {
+      console.error('Failed to update task status:', error);
+      return false;
+    }
+  };
+
   const handleCreateTask = async () => {
     const title = newTaskForm.title.trim();
     if (!title) {
@@ -547,42 +661,18 @@ const App: React.FC = () => {
     }
 
     try {
-      const response = await fetch('/api/tasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId: targetProjectId,
-          title,
-          description: newTaskForm.description,
-          status: normalizeStatus(createTaskStatus),
-          priority: newTaskForm.priority,
-          dueDate: newTaskForm.dueDate || undefined,
-          tags: newTaskForm.tags,
-        }),
+      await createTaskForProject({
+        projectId: targetProjectId,
+        title,
+        description: newTaskForm.description,
+        status: createTaskStatus,
+        priority: newTaskForm.priority,
+        dueDate: newTaskForm.dueDate || undefined,
+        tags: newTaskForm.tags,
       });
-
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success) {
-          const project = projects.find(p => p.project.id === targetProjectId)?.project || projects[0].project;
-          setTasks(prev => [...prev, { task: { ...result.data, status: normalizeStatus(result.data.status) }, project }]);
-          setProjects(prev => prev.map(p =>
-            p.project.id === targetProjectId
-              ? { ...p, taskCount: p.taskCount + 1 }
-              : p
-          ));
-          setNewTaskForm({
-            title: '',
-            description: '',
-            priority: 'medium',
-            dueDate: '',
-            showDueDate: false,
-            tags: [],
-          });
-          setTaskFormError('');
-          setIsCreateTaskModalOpen(false);
-        }
-      }
+      resetNewTaskForm();
+      setTaskFormError('');
+      setIsCreateTaskModalOpen(false);
     } catch (error) {
       console.error('Failed to create task:', error);
       setTaskFormError('Failed to create task. Please try again.');
@@ -619,29 +709,53 @@ const App: React.FC = () => {
       return;
     }
 
+    await updateTaskStatus(draggedTask, normalizeStatus(newStatus));
+    setDraggedTask(null);
+  };
+
+  const handleCreateTaskFromGraph = async (input: {
+    title: string;
+    description: string;
+    priority: TaskPriority;
+    tags: string[];
+  }): Promise<{
+    id: string;
+    title: string;
+    status: TaskStatus;
+    priority: TaskPriority;
+    description?: string;
+    tags: string[];
+  } | null> => {
+    if (!selectedProject) {
+      return null;
+    }
+
     try {
-      const response = await fetch('/api/tasks', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId: taskItem.project.id,
-          taskId: draggedTask,
-          status: normalizeStatus(newStatus),
-        }),
+      const createdTask = await createTaskForProject({
+        projectId: selectedProject,
+        title: input.title,
+        description: input.description,
+        status: 'todo',
+        priority: input.priority,
+        tags: input.tags,
       });
 
-      if (response.ok) {
-        setTasks(prev => prev.map(t => 
-          t.task.id === draggedTask 
-            ? { ...t, task: { ...t.task, status: normalizeStatus(newStatus) } }
-            : t
-        ));
+      if (!createdTask) {
+        return null;
       }
+
+      return {
+        id: createdTask.id,
+        title: createdTask.title,
+        status: normalizeStatus(createdTask.status),
+        priority: createdTask.priority as TaskPriority,
+        description: createdTask.description,
+        tags: createdTask.tags || [],
+      };
     } catch (error) {
-      console.error('Failed to update task status:', error);
+      console.error('Failed to create graph task:', error);
+      return null;
     }
-    
-    setDraggedTask(null);
   };
 
   const getTasksByStatus = (status: TaskStatus) => 
@@ -1115,6 +1229,8 @@ const App: React.FC = () => {
               projectId={selectedProject}
               projectName={projects.find(project => project.project.id === selectedProject)?.project.name}
               onGraphsChange={setGraphViews}
+              onTaskStatusChange={updateTaskStatus}
+              onCreateTask={handleCreateTaskFromGraph}
               displayMode={cardMode}
               tags={tagsWithTaskCounts.map((tag) => ({
                 id: tag.id,

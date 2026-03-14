@@ -11,6 +11,8 @@ import {
   useEdgesState,
   type Node,
   type Edge,
+  type EdgeProps,
+  type EdgeTypes,
   type NodeTypes,
   type NodeProps,
   type OnConnect,
@@ -18,11 +20,12 @@ import {
   type EdgeMouseHandler,
   type ReactFlowInstance,
 } from '@xyflow/react';
-import * as dagre from 'dagre';
+import ELK, { type ElkEdgeSection, type ElkExtendedEdge, type ElkNode, type ElkPoint, type ElkPort, type LayoutOptions } from 'elkjs/lib/elk.bundled.js';
 import { toPng } from 'html-to-image';
 
 import { getItem, removeItem, setItem, STORAGE_KEYS } from '../utils/storage.js';
 import TagBadge from './TagBadge.js';
+import TagSelector from './TagSelector.js';
 
 // ─── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -77,10 +80,18 @@ interface TaskItem {
   tags: string[];
 }
 
+type TaskStatus = 'todo' | 'in-progress' | 'review' | 'done';
+type TaskPriority = TaskItem['priority'];
+
 interface TagItem {
   id: string;
   name: string;
   color: string;
+}
+
+interface LayoutedEdgeData extends Record<string, unknown> {
+  path: string;
+  sourceStatus: string;
 }
 
 type DisplayMode = 'compact' | 'detailed';
@@ -92,9 +103,45 @@ interface DependencyViewsPanelProps {
   tasks: TaskItem[];
   tags: TagItem[];
   onGraphsChange: (graphs: GraphSummary[]) => void;
+  onTaskStatusChange: (taskId: string, status: TaskStatus) => Promise<boolean>;
+  onCreateTask: (input: {
+    title: string;
+    description: string;
+    priority: TaskPriority;
+    tags: string[];
+  }) => Promise<TaskItem | null>;
 }
 
 type SavedGraphSelections = Record<string, string>;
+type TaskFlowEdge = Edge<LayoutedEdgeData, 'layoutedEdge'>;
+
+const elk = new ELK();
+const GRAPH_MOTION_STYLES = `
+  @keyframes dependency-edge-flow {
+    to {
+      stroke-dashoffset: -52;
+    }
+  }
+
+  @keyframes dependency-ready-glow {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.12), 0 16px 36px rgba(15, 23, 42, 0.12);
+    }
+
+    50% {
+      box-shadow: 0 0 0 8px rgba(16, 185, 129, 0.1), 0 22px 44px rgba(16, 185, 129, 0.2);
+    }
+  }
+
+  .dependency-edge-flow {
+    animation: dependency-edge-flow 1.2s linear infinite;
+  }
+
+  .dependency-ready-card {
+    animation: dependency-ready-glow 1.8s ease-in-out infinite;
+  }
+`;
 
 function normalizeDependencyView(
   payload: DependencyView | DependencyViewMutationResponse | null | undefined
@@ -121,6 +168,8 @@ interface TaskNodeData extends Record<string, unknown> {
   displayMode: DisplayMode;
   onAddNext: (taskId: string) => void;
   onRemove: (taskId: string) => void;
+  onStatusChange: (taskId: string, status: TaskStatus) => Promise<boolean>;
+  isStatusUpdating: boolean;
 }
 
 type TaskFlowNode = Node<TaskNodeData, 'taskNode'>;
@@ -129,22 +178,22 @@ type TaskFlowNode = Node<TaskNodeData, 'taskNode'>;
 
 const DISPLAY_MODE_CONFIG: Record<DisplayMode, { nodeWidth: number; nodeHeight: number; layerXGap: number; layerYGap: number }> = {
   compact: {
-    nodeWidth: 248,
+    nodeWidth: 276,
     nodeHeight: 108,
-    layerXGap: 300,
+    layerXGap: 78,
     layerYGap: 144,
   },
   detailed: {
-    nodeWidth: 300,
+    nodeWidth: 328,
     nodeHeight: 168,
-    layerXGap: 350,
+    layerXGap: 88,
     layerYGap: 220,
   },
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
-  critical: '#ef4444',
-  high: '#f97316',
+  critical: '#dc2626',
+  high: '#d97706',
   medium: '#3b82f6',
   low: '#10b981',
 };
@@ -156,34 +205,360 @@ const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
   'done': { label: 'Done', cls: 'bg-emerald-100 text-emerald-700' },
 };
 
-// ─── Dagre auto-layout (left-to-right)
+const STATUS_OPTIONS: TaskStatus[] = ['todo', 'in-progress', 'review', 'done'];
 
-function computeAutoLayout(
-  nodes: TaskFlowNode[],
-  flowEdges: Edge[],
-  config: { nodeWidth: number; nodeHeight: number; layerXGap: number; layerYGap: number }
-): TaskFlowNode[] {
-  const g = new dagre.graphlib.Graph();
-  g.setGraph({
-    rankdir: 'LR',
-    ranksep: config.layerXGap - config.nodeWidth,
-    nodesep: config.layerYGap - config.nodeHeight,
-  });
-  g.setDefaultEdgeLabel(() => ({}));
-  nodes.forEach((n) => {
-    g.setNode(n.id, { width: config.nodeWidth, height: config.nodeHeight });
-  });
-  flowEdges.forEach((e) => {
-    g.setEdge(e.source, e.target);
-  });
-  dagre.layout(g);
-  return nodes.map((n) => {
-    const pos = g.node(n.id);
+function buildRoundedOrthogonalPath(points: ElkPoint[], radius = 12): string {
+  if (points.length === 0) {
+    return '';
+  }
+
+  if (points.length === 1) {
+    return `M ${points[0].x},${points[0].y}`;
+  }
+
+  const commands: string[] = [`M ${points[0].x},${points[0].y}`];
+
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    const next = points[index + 1];
+
+    if (!next) {
+      commands.push(`L ${current.x},${current.y}`);
+      continue;
+    }
+
+    const incomingDx = current.x - previous.x;
+    const incomingDy = current.y - previous.y;
+    const outgoingDx = next.x - current.x;
+    const outgoingDy = next.y - current.y;
+    const incomingLength = Math.hypot(incomingDx, incomingDy);
+    const outgoingLength = Math.hypot(outgoingDx, outgoingDy);
+
+    if (incomingLength === 0 || outgoingLength === 0) {
+      commands.push(`L ${current.x},${current.y}`);
+      continue;
+    }
+
+    const segmentRadius = Math.min(radius, incomingLength / 2, outgoingLength / 2);
+    const beforeX = current.x - (incomingDx / incomingLength) * segmentRadius;
+    const beforeY = current.y - (incomingDy / incomingLength) * segmentRadius;
+    const afterX = current.x + (outgoingDx / outgoingLength) * segmentRadius;
+    const afterY = current.y + (outgoingDy / outgoingLength) * segmentRadius;
+
+    commands.push(`L ${beforeX},${beforeY}`);
+    commands.push(`Q ${current.x},${current.y} ${afterX},${afterY}`);
+  }
+
+  return commands.join(' ');
+}
+
+function centerOrthogonalBends(points: ElkPoint[]): ElkPoint[] {
+  if (points.length < 4) {
+    return points;
+  }
+
+  const normalized = points.map((point) => ({ ...point }));
+
+  const isHorizontal = (from: ElkPoint, to: ElkPoint): boolean => from.y === to.y && from.x !== to.x;
+  const isVertical = (from: ElkPoint, to: ElkPoint): boolean => from.x === to.x && from.y !== to.y;
+
+  for (let index = 1; index < normalized.length - 1; index += 1) {
+    if (!isVertical(normalized[index], normalized[index + 1])) {
+      continue;
+    }
+
+    let runStart = index;
+    let runEnd = index + 1;
+
+    while (runEnd < normalized.length - 1 && isVertical(normalized[runEnd], normalized[runEnd + 1])) {
+      runEnd += 1;
+    }
+
+    let leftAnchorIndex = runStart - 1;
+    if (leftAnchorIndex < 0 || !isHorizontal(normalized[leftAnchorIndex], normalized[runStart])) {
+      index = runEnd;
+      continue;
+    }
+
+    while (leftAnchorIndex > 0 && isHorizontal(normalized[leftAnchorIndex - 1], normalized[leftAnchorIndex])) {
+      leftAnchorIndex -= 1;
+    }
+
+    let rightAnchorIndex = runEnd + 1;
+    if (rightAnchorIndex >= normalized.length || !isHorizontal(normalized[runEnd], normalized[rightAnchorIndex])) {
+      index = runEnd;
+      continue;
+    }
+
+    while (rightAnchorIndex < normalized.length - 1 && isHorizontal(normalized[rightAnchorIndex], normalized[rightAnchorIndex + 1])) {
+      rightAnchorIndex += 1;
+    }
+
+    const midpointX = (normalized[leftAnchorIndex].x + normalized[rightAnchorIndex].x) / 2;
+    for (let pointIndex = runStart; pointIndex <= runEnd; pointIndex += 1) {
+      normalized[pointIndex] = { ...normalized[pointIndex], x: midpointX };
+    }
+
+    index = runEnd;
+  }
+
+  return normalized;
+}
+
+function buildEdgePath(points: ElkPoint[]): string {
+  return buildRoundedOrthogonalPath(centerOrthogonalBends(points));
+}
+
+function getSectionPoints(section: ElkEdgeSection): ElkPoint[] {
+  return [section.startPoint, ...(section.bendPoints ?? []), section.endPoint];
+}
+
+function getEdgePalette(status: string, isSelected: boolean): {
+  stroke: string;
+  strokeWidth: number;
+  animated: boolean;
+  opacity: number;
+} {
+  if (isSelected) {
     return {
-      ...n,
-      position: { x: pos.x - config.nodeWidth / 2, y: pos.y - config.nodeHeight / 2 },
+      stroke: '#10b981',
+      strokeWidth: 3,
+      animated: false,
+      opacity: 1,
+    };
+  }
+
+  switch (status) {
+    case 'in-progress':
+      return {
+        stroke: '#2563eb',
+        strokeWidth: 2.75,
+        animated: true,
+        opacity: 0.95,
+      };
+    case 'review':
+      return {
+        stroke: '#d97706',
+        strokeWidth: 2.75,
+        animated: true,
+        opacity: 0.95,
+      };
+    case 'done':
+      return {
+        stroke: '#94a3b8',
+        strokeWidth: 2,
+        animated: false,
+        opacity: 0.7,
+      };
+    default:
+      return {
+        stroke: '#94a3b8',
+        strokeWidth: 2,
+        animated: false,
+        opacity: 0.9,
+      };
+  }
+}
+
+function buildElkLayoutOptions(config: {
+  nodeWidth: number;
+  nodeHeight: number;
+  layerXGap: number;
+  layerYGap: number;
+}): LayoutOptions {
+  return {
+    'elk.algorithm': 'layered',
+    'elk.direction': 'RIGHT',
+    'elk.edgeRouting': 'ORTHOGONAL',
+    'elk.layered.spacing.nodeNodeBetweenLayers': String(Math.max(config.layerXGap, 48)),
+    'elk.spacing.nodeNode': String(Math.max(config.layerYGap - config.nodeHeight + 48, 64)),
+    'elk.spacing.edgeEdge': '12',
+    'elk.spacing.edgeNode': '14',
+    'elk.layered.spacing.edgeNodeBetweenLayers': '14',
+    'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
+    'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
+    'elk.layered.nodePlacement.favorStraightEdges': 'true',
+    'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
+    'elk.layered.unnecessaryBendpoints': 'true',
+    'elk.layered.highDegreeNodes.treatment': 'true',
+    'elk.layered.highDegreeNodes.threshold': '6',
+    'elk.portConstraints': 'FIXED_ORDER',
+  };
+}
+
+async function computeAutoLayout(
+  nodes: TaskFlowNode[],
+  viewEdges: ViewEdge[],
+  taskMap: Map<string, TaskItem>,
+  selectedEdgeId: string | null,
+  config: { nodeWidth: number; nodeHeight: number; layerXGap: number; layerYGap: number }
+): Promise<{ nodes: TaskFlowNode[]; edges: TaskFlowEdge[] }> {
+  const portsByNode = new Map<string, { in: ElkPort; out: ElkPort }>();
+  const elkNodes: ElkNode[] = nodes.map((node) => {
+    const ports = {
+      in: {
+        id: `${node.id}__in`,
+        width: 12,
+        height: 12,
+        layoutOptions: {
+          'elk.port.side': 'WEST',
+          'elk.port.index': '0',
+        },
+      },
+      out: {
+        id: `${node.id}__out`,
+        width: 12,
+        height: 12,
+        layoutOptions: {
+          'elk.port.side': 'EAST',
+          'elk.port.index': '1',
+        },
+      },
+    };
+    portsByNode.set(node.id, ports);
+    return {
+      id: node.id,
+      width: config.nodeWidth,
+      height: config.nodeHeight,
+      layoutOptions: {
+        'elk.portConstraints': 'FIXED_ORDER',
+      },
+      ports: [ports.in, ports.out],
     };
   });
+
+  const elkEdges: ElkExtendedEdge[] = viewEdges.flatMap((edge) => {
+    const sourcePorts = portsByNode.get(edge.fromTaskId);
+    const targetPorts = portsByNode.get(edge.toTaskId);
+    if (!sourcePorts || !targetPorts) {
+      return [];
+    }
+
+    return [{
+      id: edge.id,
+      sources: [sourcePorts.out.id],
+      targets: [targetPorts.in.id],
+    }];
+  });
+
+  const layoutedGraph = await elk.layout({
+    id: 'dependency-view-root',
+    layoutOptions: buildElkLayoutOptions(config),
+    children: elkNodes,
+    edges: elkEdges,
+  });
+
+  const layoutedNodeMap = new Map<string, ElkNode>(
+    (layoutedGraph.children ?? []).map((layoutedNode: ElkNode) => [layoutedNode.id, layoutedNode])
+  );
+  const finalNodes = nodes.map((node) => {
+    const layoutedNode = layoutedNodeMap.get(node.id);
+    if (!layoutedNode || layoutedNode.x === undefined || layoutedNode.y === undefined) {
+      return node;
+    }
+
+    return {
+      ...node,
+      position: { x: layoutedNode.x, y: layoutedNode.y },
+    };
+  });
+
+  const finalEdges: TaskFlowEdge[] = elkEdges.map((edge) => {
+    const originalEdge = viewEdges.find((viewEdge) => viewEdge.id === edge.id);
+    const layoutedEdge = (layoutedGraph.edges ?? []).find((layoutedItem: ElkExtendedEdge) => layoutedItem.id === edge.id);
+    const section = layoutedEdge?.sections?.[0];
+    const points = section ? getSectionPoints(section) : [];
+    const sourceTaskStatus = originalEdge ? (taskMap.get(originalEdge.fromTaskId)?.status ?? 'todo') : 'todo';
+    const palette = getEdgePalette(sourceTaskStatus, selectedEdgeId === edge.id);
+
+    return {
+      id: edge.id,
+      source: originalEdge?.fromTaskId ?? '',
+      target: originalEdge?.toTaskId ?? '',
+      type: 'layoutedEdge',
+      markerEnd: { type: MarkerType.ArrowClosed, color: palette.stroke },
+      animated: palette.animated,
+      style: {
+        stroke: palette.stroke,
+        strokeWidth: palette.strokeWidth,
+        opacity: palette.opacity,
+      },
+      data: {
+        path: buildEdgePath(points),
+        sourceStatus: sourceTaskStatus,
+      },
+    };
+  });
+
+  return {
+    nodes: finalNodes,
+    edges: finalEdges,
+  };
+}
+
+function LayoutedEdgeComponent({ id, data, markerEnd, style, interactionWidth }: EdgeProps<TaskFlowEdge>) {
+  const path = typeof data?.path === 'string' ? data.path : '';
+  if (!path) {
+    return null;
+  }
+
+  const sourceStatus = typeof data?.sourceStatus === 'string' ? data.sourceStatus : 'todo';
+  const stroke = typeof style?.stroke === 'string' ? style.stroke : '#94a3b8';
+  const strokeWidth = typeof style?.strokeWidth === 'number' ? style.strokeWidth : 2;
+  const opacity = typeof style?.opacity === 'number' ? style.opacity : 1;
+  const isAnimated = sourceStatus === 'in-progress' || sourceStatus === 'review';
+  const glowStroke = sourceStatus === 'review'
+    ? 'rgba(217, 119, 6, 0.26)'
+    : sourceStatus === 'in-progress'
+      ? 'rgba(37, 99, 235, 0.24)'
+      : 'rgba(148, 163, 184, 0.18)';
+
+  return (
+    <g>
+      <path
+        d={path}
+        fill="none"
+        stroke={glowStroke}
+        strokeWidth={strokeWidth + 8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity={isAnimated ? 0.85 : 0.35}
+      />
+      <path
+        id={id}
+        d={path}
+        fill="none"
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity={opacity}
+        markerEnd={markerEnd}
+      />
+      {isAnimated && (
+        <path
+          d={path}
+          fill="none"
+          stroke="#ffffff"
+          strokeWidth={Math.max(strokeWidth - 0.2, 1.6)}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeDasharray="14 12"
+          className="dependency-edge-flow"
+          markerEnd={markerEnd}
+        />
+      )}
+      <path
+        d={path}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={Math.max(interactionWidth ?? 20, strokeWidth + 16)}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </g>
+  );
 }
 
 // ─── Task Node Component (defined outside main to prevent re-creation)
@@ -196,33 +571,154 @@ function TaskNodeComponent({ data }: NodeProps<TaskFlowNode>) {
   const displayMode = data.displayMode as DisplayMode;
   const onAddNext = data.onAddNext as (id: string) => void;
   const onRemove = data.onRemove as (id: string) => void;
+  const onStatusChange = data.onStatusChange as (taskId: string, status: TaskStatus) => Promise<boolean>;
+  const isStatusUpdating = data.isStatusUpdating as boolean;
+  const [isStatusMenuOpen, setIsStatusMenuOpen] = useState(false);
+  const [menuStyle, setMenuStyle] = useState<{ top: number; left: number; width: number } | null>(null);
+  const statusButtonRef = useRef<HTMLButtonElement | null>(null);
+  const statusMenuRef = useRef<HTMLDivElement | null>(null);
   const color = PRIORITY_COLORS[task.priority] ?? '#3b82f6';
   const status = STATUS_CONFIG[task.status] ?? { label: task.status, cls: 'bg-slate-100 text-slate-600' };
   const layout = DISPLAY_MODE_CONFIG[displayMode];
   const isCompact = displayMode === 'compact';
+  const readinessState = isDone ? 'done' : isReady ? 'ready' : 'blocked';
+  const readinessBadge = isDone
+    ? { label: 'Completed', cls: 'bg-slate-200 text-slate-600', iconCls: 'text-slate-500' }
+    : isReady
+      ? { label: 'Ready', cls: 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/30', iconCls: 'text-white/90' }
+      : { label: 'Waiting', cls: 'bg-amber-100 text-amber-700 ring-1 ring-amber-200', iconCls: 'text-amber-500' };
   const surfaceStyle = isDone
     ? {
         width: layout.nodeWidth,
         border: `2px solid ${color}`,
         boxShadow: `0 2px 10px ${color}18`,
+        background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
         opacity: 0.55,
       }
     : isReady
       ? {
           width: layout.nodeWidth,
           border: `2px solid ${color}`,
-          boxShadow: `0 0 0 4px ${color}18, 0 16px 36px ${color}35`,
-          transform: 'translateY(-2px)',
+          background: `linear-gradient(135deg, ${color}18 0%, #ffffff 34%, #f8fafc 100%)`,
+          boxShadow: `0 0 0 5px ${color}16, 0 18px 40px ${color}30`,
+          transform: 'translateY(-3px)',
         }
       : {
           width: layout.nodeWidth,
-          border: `2px solid ${color}`,
-          boxShadow: `0 4px 20px ${color}25`,
-        };
+          border: `2px solid ${color}70`,
+          background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+          boxShadow: '0 6px 18px rgba(15, 23, 42, 0.08)',
+           opacity: 0.92,
+           filter: 'saturate(0.85)',
+         };
+
+  const updateMenuPosition = useCallback(() => {
+    const button = statusButtonRef.current;
+    if (!button) {
+      return;
+    }
+
+    const rect = button.getBoundingClientRect();
+    const width = Math.max(rect.width + 48, 176);
+    setMenuStyle({
+      top: rect.bottom + 10,
+      left: Math.max(12, rect.right - width),
+      width,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isStatusMenuOpen) {
+      return;
+    }
+
+    updateMenuPosition();
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (statusButtonRef.current?.contains(target) || statusMenuRef.current?.contains(target)) {
+        return;
+      }
+
+      setIsStatusMenuOpen(false);
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsStatusMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('mousedown', handlePointerDown);
+    window.addEventListener('resize', updateMenuPosition);
+    window.addEventListener('scroll', updateMenuPosition, true);
+    window.addEventListener('keydown', handleEscape);
+
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown);
+      window.removeEventListener('resize', updateMenuPosition);
+      window.removeEventListener('scroll', updateMenuPosition, true);
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [isStatusMenuOpen, updateMenuPosition]);
+
+  useEffect(() => {
+    if (isStatusUpdating) {
+      setIsStatusMenuOpen(false);
+    }
+  }, [isStatusUpdating]);
+
+  const handleStatusToggle = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (isStatusUpdating) {
+      return;
+    }
+
+    if (!isStatusMenuOpen) {
+      updateMenuPosition();
+    }
+    setIsStatusMenuOpen((value) => !value);
+  };
+
+  const handleStatusSelect = async (nextStatus: TaskStatus) => {
+    if (nextStatus === task.status) {
+      setIsStatusMenuOpen(false);
+      return;
+    }
+
+    const success = await onStatusChange(task.id, nextStatus);
+    if (success) {
+      setIsStatusMenuOpen(false);
+    }
+  };
+
+  const readinessIcon = isDone
+    ? (
+        <svg aria-hidden="true" className={`h-3 w-3 ${readinessBadge.iconCls}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25" d="M5 13l4 4L19 7" />
+        </svg>
+      )
+    : isReady
+      ? (
+          <svg aria-hidden="true" className={`h-3 w-3 ${readinessBadge.iconCls}`} fill="currentColor" viewBox="0 0 24 24">
+            <path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z" />
+          </svg>
+        )
+      : (
+          <svg aria-hidden="true" className={`h-3 w-3 ${readinessBadge.iconCls}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 2" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        );
 
   return (
-    <div
-      className="bg-white rounded-2xl overflow-hidden"
+    <>
+      <div
+      className={`bg-white rounded-2xl ${readinessState === 'ready' ? 'dependency-ready-card' : ''}`}
       style={surfaceStyle}
     >
       <Handle
@@ -232,21 +728,34 @@ function TaskNodeComponent({ data }: NodeProps<TaskFlowNode>) {
       />
       {/* Priority / Status header */}
       <div
-        className="px-4 py-2 flex items-center justify-between"
+        className="px-4 py-2.5"
         style={{ backgroundColor: `${color}15` }}
       >
-        <span className="text-[10px] font-black uppercase tracking-widest" style={{ color }}>
-          {task.priority}
-        </span>
-        <div className="flex items-center gap-1.5">
-          {isReady && !isDone && (
-            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-emerald-700">
-              Ready
-            </span>
-          )}
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${status.cls}`}>
-            {status.label}
+        <div className="flex items-start justify-between gap-3">
+          <span className="pt-1 text-[10px] font-black uppercase tracking-widest" style={{ color }}>
+            {task.priority}
           </span>
+          <div className="flex max-w-[70%] flex-wrap justify-end gap-1.5">
+            <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-widest ${readinessBadge.cls}`}>
+              {readinessIcon}
+              {readinessBadge.label}
+            </span>
+            <button
+              ref={statusButtonRef}
+              type="button"
+              onClick={handleStatusToggle}
+              disabled={isStatusUpdating}
+              className={`nodrag nopan inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold transition-all ${status.cls} ${isStatusUpdating ? 'cursor-wait opacity-70' : 'cursor-pointer hover:ring-2 hover:ring-slate-200'}`}
+              aria-haspopup="menu"
+              aria-expanded={isStatusMenuOpen}
+              title="Change task status"
+            >
+              {status.label}
+              <svg aria-hidden="true" className="h-3 w-3 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
       {/* Title + description */}
@@ -303,11 +812,50 @@ function TaskNodeComponent({ data }: NodeProps<TaskFlowNode>) {
         position={Position.Right}
         style={{ background: '#10b981', width: 10, height: 10, border: '2px solid white' }}
       />
-    </div>
+      </div>
+      {isStatusMenuOpen && menuStyle && createPortal(
+        <div
+          ref={statusMenuRef}
+          className="rounded-2xl border border-slate-200/90 bg-white/95 p-2 shadow-2xl backdrop-blur-md"
+          style={{
+            position: 'fixed',
+            top: menuStyle.top,
+            left: menuStyle.left,
+            width: menuStyle.width,
+            zIndex: 80,
+          }}
+        >
+          <p className="px-2 pb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Set Status</p>
+          <div className="space-y-1">
+            {STATUS_OPTIONS.map((option) => {
+              const optionConfig = STATUS_CONFIG[option];
+              const isCurrent = option === task.status;
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => void handleStatusSelect(option)}
+                  disabled={isStatusUpdating}
+                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs font-semibold transition-colors ${isCurrent ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-50'} disabled:cursor-wait disabled:opacity-60`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span className={`h-2.5 w-2.5 rounded-full ${optionConfig.cls}`} />
+                    <span>{optionConfig.label}</span>
+                  </span>
+                  {isCurrent && <span className="text-[10px] font-black uppercase tracking-wide">Current</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
   );
 }
 
 const nodeTypes: NodeTypes = { taskNode: TaskNodeComponent };
+const edgeTypes: EdgeTypes = { layoutedEdge: LayoutedEdgeComponent };
 
 // ─── Main Component
 
@@ -318,6 +866,8 @@ export default function DependencyViewsPanel({
   tasks,
   tags,
   onGraphsChange,
+  onTaskStatusChange,
+  onCreateTask,
 }: DependencyViewsPanelProps) {
   const [graphs, setGraphs] = useState<GraphSummary[]>([]);
   const [selectedGraphId, setSelectedGraphId] = useState<string | null>(null);
@@ -334,8 +884,25 @@ export default function DependencyViewsPanel({
   const [hideCompletedInAdd, setHideCompletedInAdd] = useState(true);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [isUpdatingEdge, setIsUpdatingEdge] = useState(false);
-  const [isGraphListCollapsed, setIsGraphListCollapsed] = useState(false);
+  const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
+  const [isGraphListCollapsed, setIsGraphListCollapsed] = useState(
+    () => getItem<boolean>(STORAGE_KEYS.GRAPH_SIDEBAR_COLLAPSED) ?? false
+  );
   const [isExportingImage, setIsExportingImage] = useState(false);
+  const [isQuickCreateTaskOpen, setIsQuickCreateTaskOpen] = useState(false);
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
+  const [quickCreateTaskError, setQuickCreateTaskError] = useState('');
+  const [quickCreateTaskForm, setQuickCreateTaskForm] = useState<{
+    title: string;
+    description: string;
+    priority: TaskPriority;
+    tags: string[];
+  }>({
+    title: '',
+    description: '',
+    priority: 'medium',
+    tags: [],
+  });
 
   // ReactFlow state
   const [nodes, setNodes, onNodesChange] = useNodesState<TaskFlowNode>([]);
@@ -420,6 +987,10 @@ export default function DependencyViewsPanel({
     setItem(STORAGE_KEYS.SELECTED_GRAPH_BY_PROJECT, restSelections);
   }, [projectId, selectedGraphId]);
 
+  useEffect(() => {
+    setItem(STORAGE_KEYS.GRAPH_SIDEBAR_COLLAPSED, isGraphListCollapsed);
+  }, [isGraphListCollapsed]);
+
   // Load selected view when selectedGraphId changes
   useEffect(() => {
     if (!projectId || !selectedGraphId) {
@@ -459,6 +1030,75 @@ export default function DependencyViewsPanel({
       }
     })();
   }, []);
+
+  const resetQuickCreateTaskForm = useCallback(() => {
+    setQuickCreateTaskForm({
+      title: '',
+      description: '',
+      priority: 'medium',
+      tags: [],
+    });
+    setQuickCreateTaskError('');
+  }, []);
+
+  const handleOpenQuickCreateTask = useCallback(() => {
+    resetQuickCreateTaskForm();
+    setIsQuickCreateTaskOpen(true);
+  }, [resetQuickCreateTaskForm]);
+
+  const handleCloseQuickCreateTask = useCallback(() => {
+    setIsQuickCreateTaskOpen(false);
+    resetQuickCreateTaskForm();
+  }, [resetQuickCreateTaskForm]);
+
+  const handleTaskStatusChange = useCallback(async (taskId: string, status: TaskStatus) => {
+    setUpdatingTaskId(taskId);
+    try {
+      return await onTaskStatusChange(taskId, status);
+    } finally {
+      setUpdatingTaskId((current) => (current === taskId ? null : current));
+    }
+  }, [onTaskStatusChange]);
+
+  const handleQuickCreateTask = useCallback(async () => {
+    const title = quickCreateTaskForm.title.trim();
+    if (!title) {
+      setQuickCreateTaskError('Title is required.');
+      return;
+    }
+    if (title.length < 3) {
+      setQuickCreateTaskError('Title must be at least 3 characters.');
+      return;
+    }
+    if (title.length > 120) {
+      setQuickCreateTaskError('Title must be 120 characters or fewer.');
+      return;
+    }
+
+    setIsCreatingTask(true);
+    try {
+      const createdTask = await onCreateTask({
+        title,
+        description: quickCreateTaskForm.description,
+        priority: quickCreateTaskForm.priority,
+        tags: quickCreateTaskForm.tags,
+      });
+
+      if (!createdTask) {
+        setQuickCreateTaskError('Failed to create task. Please try again.');
+        return;
+      }
+
+      setSelectedAddTaskIds((current) => (current.includes(createdTask.id) ? current : [...current, createdTask.id]));
+      setIsQuickCreateTaskOpen(false);
+      resetQuickCreateTaskForm();
+    } catch (error) {
+      console.error('Failed to create task from graph modal:', error);
+      setQuickCreateTaskError('Failed to create task. Please try again.');
+    } finally {
+      setIsCreatingTask(false);
+    }
+  }, [onCreateTask, quickCreateTaskForm, resetQuickCreateTaskForm]);
 
   const handleDeleteEdge = useCallback(async (edgeId: string) => {
     const pid = projectIdRef.current;
@@ -547,21 +1187,29 @@ export default function DependencyViewsPanel({
           displayMode,
           onAddNext: handleAddNext,
           onRemove: handleRemove,
+          onStatusChange: handleTaskStatusChange,
+          isStatusUpdating: updatingTaskId === n.taskId,
         } as unknown as TaskNodeData,
       }));
-    const rawEdges: Edge[] = currentView.edges.map((e) => ({
-      id: e.id,
-      source: e.fromTaskId,
-      target: e.toTaskId,
-      type: 'smoothstep',
-      markerEnd: { type: MarkerType.ArrowClosed, color: selectedEdgeId === e.id ? '#10b981' : '#94a3b8' },
-      style: { stroke: selectedEdgeId === e.id ? '#10b981' : '#94a3b8', strokeWidth: selectedEdgeId === e.id ? 3 : 2 },
-      animated: selectedEdgeId === e.id,
-    }));
-    const finalNodes = rawNodes.length > 0 ? computeAutoLayout(rawNodes, rawEdges, layoutConfig) : rawNodes;
-    setNodes(finalNodes);
-    setEdges(rawEdges);
-  }, [currentView, tasks, tagMap, handleAddNext, handleRemove, selectedEdgeId, displayMode, setNodes, setEdges]);
+    let isCancelled = false;
+
+    void (async () => {
+      const layouted = rawNodes.length > 0
+        ? await computeAutoLayout(rawNodes, currentView.edges, taskMap, selectedEdgeId, layoutConfig)
+        : { nodes: rawNodes, edges: [] as TaskFlowEdge[] };
+
+      if (isCancelled) {
+        return;
+      }
+
+      setNodes(layouted.nodes);
+      setEdges(layouted.edges);
+    })();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentView, tasks, tagMap, handleAddNext, handleRemove, handleTaskStatusChange, selectedEdgeId, displayMode, setNodes, setEdges, updatingTaskId]);
 
   useEffect(() => {
     if (!currentView || !selectedEdgeId) {
@@ -962,6 +1610,7 @@ export default function DependencyViewsPanel({
                 reactFlowInstanceRef.current = instance;
               }}
               nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
               nodesDraggable={false}
               fitView
               fitViewOptions={{ padding: 0.2 }}
@@ -969,6 +1618,7 @@ export default function DependencyViewsPanel({
               maxZoom={2}
               deleteKeyCode="Delete"
             >
+              <style>{GRAPH_MOTION_STYLES}</style>
               <Background gap={24} color="#e2e8f0" />
               <Controls className="!rounded-xl !shadow-md !border-0 !bg-white" />
             </ReactFlow>
@@ -1055,20 +1705,42 @@ export default function DependencyViewsPanel({
                     ? 'The selected tasks will be connected as successors'
                     : `${availableTasksForAdd.length} task${availableTasksForAdd.length !== 1 ? 's' : ''} available`}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => setHideCompletedInAdd(!hideCompletedInAdd)}
-                  className="text-xs px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium transition-colors"
-                >
-                  {hideCompletedInAdd ? 'Show Done' : 'Hide Done'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleOpenQuickCreateTask}
+                    className="text-xs px-2.5 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold transition-colors"
+                  >
+                    New Task
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHideCompletedInAdd(!hideCompletedInAdd)}
+                    className="text-xs px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium transition-colors"
+                  >
+                    {hideCompletedInAdd ? 'Show Done' : 'Hide Done'}
+                  </button>
+                </div>
               </div>
             </div>
             <div className="p-6">
               {availableTasksForAdd.length === 0 ? (
                 <div className="py-8 text-center text-slate-400">
-                  <div className="text-3xl mb-2">🎯</div>
-                  <p className="font-medium text-sm">All tasks are already in this graph</p>
+                  <div className="text-3xl mb-2">✨</div>
+                  <p className="font-medium text-sm text-slate-500">
+                    {tasks.length === 0 ? 'No tasks yet for this project' : 'All available tasks are already in this graph'}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Create a new task here and it will appear selected in the list right away.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleOpenQuickCreateTask}
+                    className="mt-4 inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-bold text-white shadow-sm shadow-emerald-500/25 transition-colors hover:bg-emerald-600"
+                  >
+                    <span className="text-base leading-none">+</span>
+                    Create New Task
+                  </button>
                 </div>
               ) : (
                 <div className="space-y-1.5 max-h-72 overflow-y-auto">
@@ -1109,6 +1781,13 @@ export default function DependencyViewsPanel({
             <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
               <button
                 type="button"
+                onClick={handleOpenQuickCreateTask}
+                className="px-4 py-2 text-sm font-bold text-emerald-700 hover:bg-emerald-50 rounded-xl transition-colors"
+              >
+                New Task
+              </button>
+              <button
+                type="button"
                 onClick={() => { setIsAddTaskOpen(false); setAddTaskSuccessorId(null); setSelectedAddTaskIds([]); }}
                 className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
               >Cancel</button>
@@ -1118,6 +1797,85 @@ export default function DependencyViewsPanel({
                 disabled={selectedAddTaskIds.length === 0 || availableTasksForAdd.length === 0}
                 className="px-5 py-2 text-sm font-bold bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed transition-all shadow-sm shadow-emerald-500/20"
               >{selectedAddTaskIds.length > 0 ? `Add ${selectedAddTaskIds.length} Task${selectedAddTaskIds.length > 1 ? 's' : ''} to Graph` : 'Add to Graph'}</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {isQuickCreateTaskOpen && createPortal(
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 p-4 backdrop-blur-[2px]">
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="border-b border-slate-100 px-6 py-5">
+              <h2 className="text-lg font-bold text-slate-900">Create Task for This Graph</h2>
+              <p className="mt-1 text-sm text-slate-500">Create a new task without leaving Graph view. It will appear in the picker already selected.</p>
+            </div>
+            <div className="space-y-4 p-6">
+              <div>
+                <label htmlFor="quick-create-task-title" className="mb-1 block text-sm font-semibold text-slate-700">Title *</label>
+                <input
+                  id="quick-create-task-title"
+                  type="text"
+                  value={quickCreateTaskForm.title}
+                  onChange={(event) => setQuickCreateTaskForm({ ...quickCreateTaskForm, title: event.target.value })}
+                  placeholder="Enter task title"
+                  className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm transition-all focus:border-transparent focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label htmlFor="quick-create-task-description" className="mb-1 block text-sm font-semibold text-slate-700">Description</label>
+                <textarea
+                  id="quick-create-task-description"
+                  value={quickCreateTaskForm.description}
+                  onChange={(event) => setQuickCreateTaskForm({ ...quickCreateTaskForm, description: event.target.value })}
+                  rows={3}
+                  placeholder="Optional description"
+                  className="w-full resize-none rounded-xl border border-slate-200 px-4 py-2.5 text-sm transition-all focus:border-transparent focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+              <div>
+                <label htmlFor="quick-create-task-priority" className="mb-1 block text-sm font-semibold text-slate-700">Priority</label>
+                <select
+                  id="quick-create-task-priority"
+                  value={quickCreateTaskForm.priority}
+                  onChange={(event) => setQuickCreateTaskForm({ ...quickCreateTaskForm, priority: event.target.value as TaskPriority })}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm transition-all focus:border-transparent focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  <option value="critical">Critical</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">Tags</label>
+                <TagSelector
+                  tags={tags}
+                  selectedTagIds={quickCreateTaskForm.tags}
+                  onChange={(nextTagIds) => setQuickCreateTaskForm({ ...quickCreateTaskForm, tags: nextTagIds })}
+                />
+              </div>
+              {quickCreateTaskError && (
+                <p className="text-sm font-medium text-rose-600">{quickCreateTaskError}</p>
+              )}
+            </div>
+            <div className="flex justify-end gap-3 border-t border-slate-100 px-6 py-4">
+              <button
+                type="button"
+                onClick={handleCloseQuickCreateTask}
+                className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleQuickCreateTask()}
+                disabled={isCreatingTask || !quickCreateTaskForm.title.trim()}
+                className="rounded-xl bg-emerald-500 px-5 py-2 text-sm font-bold text-white shadow-sm shadow-emerald-500/20 transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+              >
+                {isCreatingTask ? 'Creating...' : 'Create Task'}
+              </button>
             </div>
           </div>
         </div>,

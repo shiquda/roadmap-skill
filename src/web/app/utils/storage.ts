@@ -7,6 +7,8 @@ const STORAGE_KEYS = {
   SELECTED_PROJECT_ID: 'roadmap_skill:selected_project_id',
   VIEW_PREFERENCES: 'roadmap_skill:view_preferences',
   SELECTED_GRAPH_BY_PROJECT: 'roadmap_skill:selected_graph_by_project',
+  PROJECT_SIDEBAR_COLLAPSED: 'roadmap_skill:project_sidebar_collapsed',
+  GRAPH_SIDEBAR_COLLAPSED: 'roadmap_skill:graph_sidebar_collapsed',
 } as const;
 
 // Memory fallback storage when localStorage is unavailable
