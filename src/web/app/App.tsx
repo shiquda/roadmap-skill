@@ -142,6 +142,9 @@ const App: React.FC = () => {
     repositoryUrl: 'https://github.com/shiquda/roadmap-skill',
   });
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const tasksRequestIdRef = useRef(0);
+  const tagsRequestIdRef = useRef(0);
+  const graphViewsRequestIdRef = useRef(0);
 
   const resetNewTaskForm = () => {
     setNewTaskForm({
@@ -178,6 +181,12 @@ const App: React.FC = () => {
       // Clear storage when "All Projects" is selected
       setItem(STORAGE_KEYS.SELECTED_PROJECT_ID, null);
     }
+  }, [selectedProject]);
+
+  useEffect(() => {
+    setGraphPickerTaskId(null);
+    setIsEditModalOpen(false);
+    setEditingTask(null);
   }, [selectedProject]);
 
   // Persist view preferences when they change (debounced)
@@ -225,10 +234,17 @@ const App: React.FC = () => {
     }
     const queryString = params.toString();
     const url = `/api/tasks${queryString ? `?${queryString}` : ''}`;
-    
+
+    tasksRequestIdRef.current += 1;
+    const requestId = tasksRequestIdRef.current;
+
     fetch(url)
       .then(res => res.json())
       .then(data => {
+        if (requestId !== tasksRequestIdRef.current) {
+          return;
+        }
+
         const normalized = (data as { task: Task; project: Project }[]).map((item) => ({
           ...item,
           task: {
@@ -243,14 +259,22 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (selectedProject) {
+      tagsRequestIdRef.current += 1;
+      const requestId = tagsRequestIdRef.current;
+
       fetch(`/api/projects/${selectedProject}/tags`)
         .then(res => res.json())
         .then(data => {
+          if (requestId !== tagsRequestIdRef.current) {
+            return;
+          }
+
           if (data.success) {
             setTags(data.data as Tag[]);
           }
         });
     } else {
+      tagsRequestIdRef.current += 1;
       setTags([]);
       setSelectedTagIds([]);
     }
@@ -293,14 +317,22 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!selectedProject) {
+      graphViewsRequestIdRef.current += 1;
       setGraphViews([]);
       setGraphPickerTaskId(null);
       return;
     }
 
+    graphViewsRequestIdRef.current += 1;
+    const requestId = graphViewsRequestIdRef.current;
+
     fetch(`/api/projects/${selectedProject}/dependency-views`)
       .then((res) => res.json())
       .then((payload) => {
+        if (requestId !== graphViewsRequestIdRef.current) {
+          return;
+        }
+
         if (payload.success) {
           setGraphViews(payload.data as GraphSummary[]);
         }
@@ -713,7 +745,7 @@ const App: React.FC = () => {
     setDraggedTask(null);
   };
 
-  const handleCreateTaskFromGraph = async (input: {
+  const handleCreateTaskFromGraph = async (projectId: string, input: {
     title: string;
     description: string;
     priority: TaskPriority;
@@ -726,13 +758,13 @@ const App: React.FC = () => {
     description?: string;
     tags: string[];
   } | null> => {
-    if (!selectedProject) {
+    if (!projectId) {
       return null;
     }
 
     try {
       const createdTask = await createTaskForProject({
-        projectId: selectedProject,
+        projectId,
         title: input.title,
         description: input.description,
         status: 'todo',
@@ -893,7 +925,7 @@ const App: React.FC = () => {
       <header className="mb-6 flex justify-between items-center">
         <div className="leading-none">
           <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-            Nova<span className="text-emerald-500">Board</span>
+            Road<span className="text-emerald-500">map</span>
           </h1>
         </div>
         <div className="flex items-center gap-4">
@@ -988,9 +1020,9 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <div className="flex flex-col gap-6 lg:flex-row">
+      <div className="flex min-h-0 flex-col gap-6 lg:h-[calc(100vh-10.5rem)] lg:flex-row">
         <aside
-          className={`flex-shrink-0 rounded-[28px] border border-white/60 bg-white/35 p-4 shadow-sm backdrop-blur-sm transition-all duration-300 ${
+          className={`flex min-h-0 flex-shrink-0 flex-col rounded-[28px] border border-white/60 bg-white/35 p-4 shadow-sm backdrop-blur-sm transition-all duration-300 lg:h-full ${
             isProjectSidebarCollapsed ? 'lg:w-24' : 'lg:w-60'
           }`}
         >
@@ -1014,58 +1046,60 @@ const App: React.FC = () => {
               </button>
             </div>
           </div>
-          <div className="space-y-1.5">
-            <button
-              type="button"
-              onClick={() => setSelectedProject(null)}
-              className={`w-full rounded-xl transition-all duration-300 ${!selectedProject ? 'bg-white shadow-md ring-1 ring-slate-100 text-slate-900 font-bold' : 'text-slate-500 hover:bg-white/50 hover:text-slate-800'} ${
-                isProjectSidebarCollapsed ? 'px-2 py-3 text-center' : 'text-left px-4 py-3'
-              }`}
-              title={isProjectSidebarCollapsed ? 'All Projects' : undefined}
-            >
-              <div className={`flex items-center ${isProjectSidebarCollapsed ? 'flex-col gap-1 justify-center' : 'justify-between'}`}>
-                <span className={`${isProjectSidebarCollapsed ? 'text-[11px] uppercase tracking-widest' : ''}`}>All Projects</span>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${!selectedProject ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
-                  {projects.reduce((sum, p) => sum + p.taskCount, 0)}
-                </span>
-              </div>
-            </button>
-            {projects.map(p => (
-              <div key={p.project.id} className="group relative">
-                <button
-                  type="button"
-                  onClick={() => setSelectedProject(p.project.id)}
-                  className={`w-full rounded-xl transition-all duration-300 ${selectedProject === p.project.id ? 'bg-white shadow-md ring-1 ring-slate-100 text-slate-900 font-bold' : 'text-slate-500 hover:bg-white/50 hover:text-slate-800'} ${
-                    isProjectSidebarCollapsed ? 'px-2 py-3 text-center' : 'text-left px-4 py-3'
-                  }`}
-                  title={isProjectSidebarCollapsed ? p.project.name : undefined}
-                >
-                  <div className={`flex items-center ${isProjectSidebarCollapsed ? 'flex-col gap-1 justify-center' : 'justify-between'}`}>
-                    <span className={`${isProjectSidebarCollapsed ? 'text-[11px] font-black uppercase tracking-widest' : 'truncate pr-6'}`}>
-                      {isProjectSidebarCollapsed ? p.project.name.slice(0, 2) : p.project.name}
-                    </span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${selectedProject === p.project.id ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
-                      {p.taskCount}
-                    </span>
-                  </div>
-                </button>
-                {!isProjectSidebarCollapsed && (
+          <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+            <div className="space-y-1.5">
+              <button
+                type="button"
+                onClick={() => setSelectedProject(null)}
+                className={`w-full rounded-xl transition-all duration-300 ${!selectedProject ? 'bg-white shadow-md ring-1 ring-slate-100 text-slate-900 font-bold' : 'text-slate-500 hover:bg-white/50 hover:text-slate-800'} ${
+                  isProjectSidebarCollapsed ? 'px-2 py-3 text-center' : 'text-left px-4 py-3'
+                }`}
+                title={isProjectSidebarCollapsed ? 'All Projects' : undefined}
+              >
+                <div className={`flex items-center ${isProjectSidebarCollapsed ? 'flex-col gap-1 justify-center' : 'justify-between'}`}>
+                  <span className={`${isProjectSidebarCollapsed ? 'text-[11px] uppercase tracking-widest' : ''}`}>All Projects</span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${!selectedProject ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
+                    {projects.reduce((sum, p) => sum + p.taskCount, 0)}
+                  </span>
+                </div>
+              </button>
+              {projects.map(p => (
+                <div key={p.project.id} className="group relative">
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteProject(p.project.id);
-                    }}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                    title="Delete Project"
+                    onClick={() => setSelectedProject(p.project.id)}
+                    className={`w-full rounded-xl transition-all duration-300 ${selectedProject === p.project.id ? 'bg-white shadow-md ring-1 ring-slate-100 text-slate-900 font-bold' : 'text-slate-500 hover:bg-white/50 hover:text-slate-800'} ${
+                      isProjectSidebarCollapsed ? 'px-2 py-3 text-center' : 'text-left px-4 py-3'
+                    }`}
+                    title={isProjectSidebarCollapsed ? p.project.name : undefined}
                   >
-                    ✕
+                    <div className={`flex items-center ${isProjectSidebarCollapsed ? 'flex-col gap-1 justify-center' : 'justify-between'}`}>
+                      <span className={`${isProjectSidebarCollapsed ? 'text-[11px] font-black uppercase tracking-widest' : 'truncate pr-6'}`}>
+                        {isProjectSidebarCollapsed ? p.project.name.slice(0, 2) : p.project.name}
+                      </span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${selectedProject === p.project.id ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
+                        {p.taskCount}
+                      </span>
+                    </div>
                   </button>
-                )}
-              </div>
-            ))}
+                  {!isProjectSidebarCollapsed && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteProject(p.project.id);
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                      title="Delete Project"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="mt-8 pt-6 border-t border-slate-200/50 space-y-3">
+          <div className="mt-6 border-t border-slate-200/50 pt-6 space-y-3">
             <button
               type="button"
               onClick={() => setIsTagManagerOpen(true)}
@@ -1135,7 +1169,7 @@ const App: React.FC = () => {
         </aside>
 
         <main
-          className={`relative flex-1 min-h-0 lg:h-[calc(100vh-10.5rem)] ${isDraggingFile ? 'ring-2 ring-blue-400 ring-dashed bg-blue-50/30' : ''}`}
+          className={`relative flex-1 min-h-0 lg:h-full ${isDraggingFile ? 'ring-2 ring-blue-400 ring-dashed bg-blue-50/30' : ''}`}
           onDragOver={handleDragOverFile}
           onDragLeave={handleDragLeaveFile}
           onDrop={handleDropFile}

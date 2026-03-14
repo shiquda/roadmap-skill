@@ -104,7 +104,7 @@ interface DependencyViewsPanelProps {
   tags: TagItem[];
   onGraphsChange: (graphs: GraphSummary[]) => void;
   onTaskStatusChange: (taskId: string, status: TaskStatus) => Promise<boolean>;
-  onCreateTask: (input: {
+  onCreateTask: (projectId: string, input: {
     title: string;
     description: string;
     priority: TaskPriority;
@@ -165,6 +165,7 @@ interface TaskNodeData extends Record<string, unknown> {
   tagMap: Record<string, TagItem>;
   isDone: boolean;
   isReady: boolean;
+  blockedByTitles: string[];
   displayMode: DisplayMode;
   onAddNext: (taskId: string) => void;
   onRemove: (taskId: string) => void;
@@ -568,6 +569,7 @@ function TaskNodeComponent({ data }: NodeProps<TaskFlowNode>) {
   const tagMap = data.tagMap as Record<string, TagItem>;
   const isDone = data.isDone as boolean;
   const isReady = data.isReady as boolean;
+  const blockedByTitles = data.blockedByTitles as string[];
   const displayMode = data.displayMode as DisplayMode;
   const onAddNext = data.onAddNext as (id: string) => void;
   const onRemove = data.onRemove as (id: string) => void;
@@ -714,6 +716,9 @@ function TaskNodeComponent({ data }: NodeProps<TaskFlowNode>) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         );
+  const waitingTooltip = !isDone && !isReady && blockedByTitles.length > 0
+    ? `Waiting for: ${blockedByTitles.join(', ')}`
+    : undefined;
 
   return (
     <>
@@ -736,7 +741,10 @@ function TaskNodeComponent({ data }: NodeProps<TaskFlowNode>) {
             {task.priority}
           </span>
           <div className="flex max-w-[70%] flex-wrap justify-end gap-1.5">
-            <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-widest ${readinessBadge.cls}`}>
+            <span
+              className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-widest ${readinessBadge.cls}`}
+              title={waitingTooltip}
+            >
               {readinessIcon}
               {readinessBadge.label}
             </span>
@@ -884,11 +892,12 @@ export default function DependencyViewsPanel({
   const [hideCompletedInAdd, setHideCompletedInAdd] = useState(true);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [isUpdatingEdge, setIsUpdatingEdge] = useState(false);
-  const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
+  const [updatingTaskIds, setUpdatingTaskIds] = useState<Set<string>>(() => new Set());
   const [isGraphListCollapsed, setIsGraphListCollapsed] = useState(
     () => getItem<boolean>(STORAGE_KEYS.GRAPH_SIDEBAR_COLLAPSED) ?? false
   );
   const [isExportingImage, setIsExportingImage] = useState(false);
+  const [isCanvasFullscreen, setIsCanvasFullscreen] = useState(false);
   const [isQuickCreateTaskOpen, setIsQuickCreateTaskOpen] = useState(false);
   const [isCreatingTask, setIsCreatingTask] = useState(false);
   const [quickCreateTaskError, setQuickCreateTaskError] = useState('');
@@ -912,6 +921,8 @@ export default function DependencyViewsPanel({
   const projectIdRef = useRef(projectId);
   const selectedGraphIdRef = useRef(selectedGraphId);
   const selectedEdgeIdRef = useRef<string | null>(selectedEdgeId);
+  const graphListRequestIdRef = useRef(0);
+  const graphViewRequestIdRef = useRef(0);
   const reactFlowWrapperRef = useRef<HTMLDivElement | null>(null);
   const reactFlowInstanceRef = useRef<ReactFlowInstance<TaskFlowNode, Edge> | null>(null);
   projectIdRef.current = projectId;
@@ -925,14 +936,25 @@ export default function DependencyViewsPanel({
   // Load graphs when projectId changes
   useEffect(() => {
     if (!projectId) {
+      graphListRequestIdRef.current += 1;
+      graphViewRequestIdRef.current += 1;
       setGraphs([]);
       setSelectedGraphId(null);
       setCurrentView(null);
+      setIsLoading(false);
       return;
     }
+
+    graphListRequestIdRef.current += 1;
+    const requestId = graphListRequestIdRef.current;
+
     void (async () => {
       const res = await fetch(`/api/projects/${projectId}/dependency-views`);
       const payload = await res.json() as { success: boolean; data: Array<GraphSummary & { nodes: ViewNode[] }> };
+      if (requestId !== graphListRequestIdRef.current || projectIdRef.current !== projectId) {
+        return;
+      }
+
       if (payload.success) {
         const nextGraphs = payload.data.map((graph) => ({
           ...graph,
@@ -991,19 +1013,103 @@ export default function DependencyViewsPanel({
     setItem(STORAGE_KEYS.GRAPH_SIDEBAR_COLLAPSED, isGraphListCollapsed);
   }, [isGraphListCollapsed]);
 
+  const syncGraphSummary = useCallback((view: DependencyView | null) => {
+    if (!view) {
+      return;
+    }
+
+    setGraphs((currentGraphs) => {
+      let hasChanges = false;
+      const nextGraphs = currentGraphs.map((graph) => {
+        if (graph.id !== view.id) {
+          return graph;
+        }
+
+        const nextGraph = {
+          ...graph,
+          name: view.name,
+          description: view.description,
+          dimension: view.dimension,
+          revision: view.revision,
+          nodeCount: view.nodes.length,
+        };
+
+        if (
+          nextGraph.name !== graph.name ||
+          nextGraph.description !== graph.description ||
+          nextGraph.dimension !== graph.dimension ||
+          nextGraph.revision !== graph.revision ||
+          nextGraph.nodeCount !== graph.nodeCount
+        ) {
+          hasChanges = true;
+        }
+
+        return nextGraph;
+      });
+
+      if (!hasChanges) {
+        return currentGraphs;
+      }
+
+      onGraphsChange(nextGraphs);
+      return nextGraphs;
+    });
+  }, [onGraphsChange]);
+
+  const resetAddTaskState = useCallback(() => {
+    setIsAddTaskOpen(false);
+    setAddTaskSuccessorId(null);
+    setSelectedAddTaskIds([]);
+    setHideCompletedInAdd(true);
+  }, []);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsCanvasFullscreen(document.fullscreenElement === reactFlowWrapperRef.current);
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && document.fullscreenElement === reactFlowWrapperRef.current) {
+        void document.exitFullscreen();
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, []);
+
   // Load selected view when selectedGraphId changes
   useEffect(() => {
     if (!projectId || !selectedGraphId) {
+      graphViewRequestIdRef.current += 1;
       setCurrentView(null);
       setSelectedEdgeId(null);
+      setIsLoading(false);
       return;
     }
+
+    graphViewRequestIdRef.current += 1;
+    const requestId = graphViewRequestIdRef.current;
     setIsLoading(true);
     void (async () => {
       const res = await fetch(`/api/projects/${projectId}/dependency-views/${selectedGraphId}`);
       const payload = await res.json() as { success: boolean; data: DependencyView | DependencyViewMutationResponse };
+      if (
+        requestId !== graphViewRequestIdRef.current ||
+        projectIdRef.current !== projectId ||
+        selectedGraphIdRef.current !== selectedGraphId
+      ) {
+        return;
+      }
+
       if (payload.success) {
         setCurrentView(normalizeDependencyView(payload.data));
+      } else {
+        setCurrentView(null);
       }
       setIsLoading(false);
     })();
@@ -1013,6 +1119,7 @@ export default function DependencyViewsPanel({
   const handleAddNext = useCallback((taskId: string) => {
     setAddTaskSuccessorId(taskId);
     setSelectedAddTaskIds([]);
+    setHideCompletedInAdd(true);
     setIsAddTaskOpen(true);
   }, []);
 
@@ -1051,12 +1158,31 @@ export default function DependencyViewsPanel({
     resetQuickCreateTaskForm();
   }, [resetQuickCreateTaskForm]);
 
+  useEffect(() => {
+    resetAddTaskState();
+    handleCloseQuickCreateTask();
+    setIsCreateGraphOpen(false);
+    setNewGraphName('');
+    setNewGraphDesc('');
+    setSelectedEdgeId(null);
+    setIsUpdatingEdge(false);
+    setUpdatingTaskIds(new Set());
+  }, [projectId, selectedGraphId, handleCloseQuickCreateTask, resetAddTaskState]);
+
   const handleTaskStatusChange = useCallback(async (taskId: string, status: TaskStatus) => {
-    setUpdatingTaskId(taskId);
+    setUpdatingTaskIds((current) => {
+      const next = new Set(current);
+      next.add(taskId);
+      return next;
+    });
     try {
       return await onTaskStatusChange(taskId, status);
     } finally {
-      setUpdatingTaskId((current) => (current === taskId ? null : current));
+      setUpdatingTaskIds((current) => {
+        const next = new Set(current);
+        next.delete(taskId);
+        return next;
+      });
     }
   }, [onTaskStatusChange]);
 
@@ -1077,7 +1203,13 @@ export default function DependencyViewsPanel({
 
     setIsCreatingTask(true);
     try {
-      const createdTask = await onCreateTask({
+      const targetProjectId = projectIdRef.current;
+      if (!targetProjectId) {
+        setQuickCreateTaskError('No active project is selected for this graph.');
+        return;
+      }
+
+      const createdTask = await onCreateTask(targetProjectId, {
         title,
         description: quickCreateTaskForm.description,
         priority: quickCreateTaskForm.priority,
@@ -1161,6 +1293,10 @@ export default function DependencyViewsPanel({
     }
   }, [currentView]);
 
+  useEffect(() => {
+    syncGraphSummary(currentView);
+  }, [currentView, syncGraphSummary]);
+
   // Rebuild ReactFlow graph whenever the view or task list changes
   useEffect(() => {
     if (!currentView) {
@@ -1173,24 +1309,32 @@ export default function DependencyViewsPanel({
     const layoutConfig = DISPLAY_MODE_CONFIG[displayMode];
     const rawNodes: TaskFlowNode[] = currentView.nodes
       .filter((n) => taskMap.has(n.taskId))
-      .map((n) => ({
-        id: n.taskId,
-        type: 'taskNode' as const,
-        position: { x: 0, y: 0 },
-        data: {
-          task: taskMap.get(n.taskId) as TaskItem,
-          tagMap,
-          isDone: (taskMap.get(n.taskId) as TaskItem).status === 'done',
-          isReady: currentView.edges
-            .filter((edge) => edge.toTaskId === n.taskId)
-            .every((edge) => taskMap.get(edge.fromTaskId)?.status === 'done'),
-          displayMode,
-          onAddNext: handleAddNext,
-          onRemove: handleRemove,
-          onStatusChange: handleTaskStatusChange,
-          isStatusUpdating: updatingTaskId === n.taskId,
-        } as unknown as TaskNodeData,
-      }));
+      .map((n) => {
+        const task = taskMap.get(n.taskId) as TaskItem;
+        const blockingTasks = currentView.edges
+          .filter((edge) => edge.toTaskId === n.taskId)
+          .map((edge) => taskMap.get(edge.fromTaskId))
+          .filter((upstreamTask): upstreamTask is TaskItem => upstreamTask !== undefined)
+          .filter((upstreamTask) => upstreamTask.status !== 'done');
+
+        return {
+          id: n.taskId,
+          type: 'taskNode' as const,
+          position: { x: 0, y: 0 },
+          data: {
+            task,
+            tagMap,
+            isDone: task.status === 'done',
+            isReady: blockingTasks.length === 0,
+            blockedByTitles: blockingTasks.map((blockingTask) => blockingTask.title),
+            displayMode,
+            onAddNext: handleAddNext,
+            onRemove: handleRemove,
+            onStatusChange: handleTaskStatusChange,
+            isStatusUpdating: updatingTaskIds.has(n.taskId),
+          } as unknown as TaskNodeData,
+        };
+      });
     let isCancelled = false;
 
     void (async () => {
@@ -1209,7 +1353,7 @@ export default function DependencyViewsPanel({
     return () => {
       isCancelled = true;
     };
-  }, [currentView, tasks, tagMap, handleAddNext, handleRemove, handleTaskStatusChange, selectedEdgeId, displayMode, setNodes, setEdges, updatingTaskId]);
+  }, [currentView, tasks, tagMap, handleAddNext, handleRemove, handleTaskStatusChange, selectedEdgeId, displayMode, setNodes, setEdges, updatingTaskIds]);
 
   useEffect(() => {
     if (!currentView || !selectedEdgeId) {
@@ -1316,6 +1460,23 @@ export default function DependencyViewsPanel({
       setIsExportingImage(false);
     }
   }, [currentView?.name]);
+
+  const handleToggleFullscreen = useCallback(async () => {
+    const wrapper = reactFlowWrapperRef.current;
+    if (!wrapper) {
+      return;
+    }
+
+    try {
+      if (document.fullscreenElement === wrapper) {
+        await document.exitFullscreen();
+      } else {
+        await wrapper.requestFullscreen();
+      }
+    } catch (error) {
+      console.error('Failed to toggle graph fullscreen mode:', error);
+    }
+  }, []);
 
   // Create graph
   const handleCreateGraph = useCallback(async () => {
@@ -1425,7 +1586,7 @@ export default function DependencyViewsPanel({
   }
 
   return (
-    <div className="flex gap-4 h-[calc(100vh-10rem)]">
+    <div className="flex h-full min-h-0 gap-4">
 
       {/* Sidebar */}
       <aside
@@ -1460,65 +1621,67 @@ export default function DependencyViewsPanel({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto space-y-1.5">
-          {graphs.length === 0 ? (
-            <div className="py-10 text-center text-slate-400">
-              <div className="text-3xl mb-2">📊</div>
-              {!isGraphListCollapsed && (
-                <>
-                  <p className="text-xs font-medium">No graphs yet</p>
-                  <p className="text-xs text-slate-300">Click + to create one</p>
-                </>
-              )}
-            </div>
-          ) : graphs.map((graph) => (
-            <div key={graph.id} className="group relative">
-              <button
-                type="button"
-                onClick={() => setSelectedGraphId(graph.id)}
-                className={`w-full rounded-xl transition-all duration-300 ${
-                  selectedGraphId === graph.id
-                    ? 'bg-white shadow-md ring-1 ring-slate-100 text-slate-900 font-bold'
-                    : 'text-slate-500 hover:bg-white/50 hover:text-slate-800'
-                } ${isGraphListCollapsed ? 'px-2 py-3 text-center' : 'text-left px-3 py-2.5 text-sm'}`}
-                title={isGraphListCollapsed ? graph.name : undefined}
-              >
-                {isGraphListCollapsed ? (
-                  <div className="flex flex-col items-center gap-1">
-                    <span className="text-[11px] font-black uppercase tracking-widest">{graph.name.slice(0, 2)}</span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${selectedGraphId === graph.id ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
-                      {selectedGraphId === graph.id && currentView ? currentView.nodes.length : graph.nodeCount}n
-                    </span>
-                  </div>
-                ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+          <div className="space-y-1.5">
+            {graphs.length === 0 ? (
+              <div className="py-10 text-center text-slate-400">
+                <div className="text-3xl mb-2">📊</div>
+                {!isGraphListCollapsed && (
                   <>
-                    <div className="truncate pr-5">{graph.name}</div>
-                    <div className={`text-[10px] mt-0.5 font-bold px-2 py-0.5 rounded-full inline-block ${selectedGraphId === graph.id ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
-                      {selectedGraphId === graph.id && currentView ? currentView.nodes.length : graph.nodeCount} nodes
-                    </div>
+                    <p className="text-xs font-medium">No graphs yet</p>
+                    <p className="text-xs text-slate-300">Click + to create one</p>
                   </>
                 )}
-              </button>
-              {!isGraphListCollapsed && (
+              </div>
+            ) : graphs.map((graph) => (
+              <div key={graph.id} className="group relative">
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); void handleDeleteGraph(graph.id); }}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-rose-50"
-                  title="Delete graph"
-                  aria-label="Delete graph"
+                  onClick={() => setSelectedGraphId(graph.id)}
+                  className={`w-full rounded-xl transition-all duration-300 ${
+                    selectedGraphId === graph.id
+                      ? 'bg-white shadow-md ring-1 ring-slate-100 text-slate-900 font-bold'
+                      : 'text-slate-500 hover:bg-white/50 hover:text-slate-800'
+                  } ${isGraphListCollapsed ? 'px-2 py-3 text-center' : 'text-left px-3 py-2.5 text-sm'}`}
+                  title={isGraphListCollapsed ? graph.name : undefined}
                 >
-                  <svg aria-hidden="true" className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                  {isGraphListCollapsed ? (
+                    <div className="flex flex-col items-center gap-1">
+                      <span className="text-[11px] font-black uppercase tracking-widest">{graph.name.slice(0, 2)}</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${selectedGraphId === graph.id ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
+                        {selectedGraphId === graph.id && currentView ? currentView.nodes.length : graph.nodeCount}n
+                      </span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="truncate pr-5">{graph.name}</div>
+                      <div className={`text-[10px] mt-0.5 font-bold px-2 py-0.5 rounded-full inline-block ${selectedGraphId === graph.id ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
+                        {selectedGraphId === graph.id && currentView ? currentView.nodes.length : graph.nodeCount} nodes
+                      </div>
+                    </>
+                  )}
                 </button>
-              )}
-            </div>
-          ))}
+                {!isGraphListCollapsed && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); void handleDeleteGraph(graph.id); }}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-rose-50"
+                    title="Delete graph"
+                    aria-label="Delete graph"
+                  >
+                    <svg aria-hidden="true" className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       </aside>
 
       {/* Main Canvas */}
-      <div ref={reactFlowWrapperRef} className="flex-1 relative rounded-2xl overflow-hidden shadow-sm border border-white/50 bg-slate-50">
+      <div ref={reactFlowWrapperRef} className={`relative flex-1 overflow-hidden bg-slate-50 ${isCanvasFullscreen ? 'h-screen w-screen rounded-none border-0 shadow-none' : 'rounded-2xl border border-white/50 shadow-sm'}`}>
         {!selectedGraphId ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center text-slate-400">
@@ -1539,23 +1702,37 @@ export default function DependencyViewsPanel({
           <>
             {/* Toolbar overlay */}
              <div className="absolute top-3 left-3 z-10 flex items-center gap-2">
-               <button
-                 type="button"
-                 onClick={() => { setAddTaskSuccessorId(null); setSelectedAddTaskIds([]); setIsAddTaskOpen(true); }}
-                 className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-xl shadow-sm border border-slate-100 hover:border-emerald-200 hover:shadow-md text-xs font-bold text-slate-700 transition-all"
-               >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAddTaskSuccessorId(null);
+                    setSelectedAddTaskIds([]);
+                    setHideCompletedInAdd(true);
+                    setIsAddTaskOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-xl shadow-sm border border-slate-100 hover:border-emerald-200 hover:shadow-md text-xs font-bold text-slate-700 transition-all"
+                >
                  <span className="text-emerald-500 text-sm leading-none">+</span> Add Task
                </button>
-               <button
-                 type="button"
-                 onClick={() => void handleExportImage()}
-                 disabled={isExportingImage || nodes.length === 0}
-                 className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-xl shadow-sm border border-slate-100 hover:border-sky-200 hover:shadow-md text-xs font-bold text-slate-700 transition-all disabled:cursor-not-allowed disabled:border-slate-100 disabled:text-slate-400"
-               >
-                 <span className="text-sky-500 text-sm leading-none">↓</span>
-                 {isExportingImage ? 'Exporting...' : 'Export PNG'}
-               </button>
-              </div>
+                <button
+                  type="button"
+                  onClick={() => void handleExportImage()}
+                  disabled={isExportingImage || nodes.length === 0}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-xl shadow-sm border border-slate-100 hover:border-sky-200 hover:shadow-md text-xs font-bold text-slate-700 transition-all disabled:cursor-not-allowed disabled:border-slate-100 disabled:text-slate-400"
+                >
+                  <span className="text-sky-500 text-sm leading-none">↓</span>
+                  {isExportingImage ? 'Exporting...' : 'Export PNG'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleToggleFullscreen()}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-xl shadow-sm border border-slate-100 hover:border-violet-200 hover:shadow-md text-xs font-bold text-slate-700 transition-all"
+                  title={isCanvasFullscreen ? 'Exit fullscreen' : 'View graph in fullscreen'}
+                >
+                  <span className="text-violet-500 text-sm leading-none">⛶</span>
+                  {isCanvasFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                </button>
+               </div>
 
              <div className={`absolute top-3 right-3 z-10 rounded-2xl border border-white/70 bg-white/95 p-3 shadow-lg backdrop-blur-sm ${isCompact ? 'w-64' : 'w-72'}`}>
                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Edge Actions</p>
@@ -1788,9 +1965,9 @@ export default function DependencyViewsPanel({
               </button>
               <button
                 type="button"
-                onClick={() => { setIsAddTaskOpen(false); setAddTaskSuccessorId(null); setSelectedAddTaskIds([]); }}
-                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
-              >Cancel</button>
+                 onClick={resetAddTaskState}
+                 className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+               >Cancel</button>
               <button
                 type="button"
                 onClick={() => void handleAddTask()}
