@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { createServer as createNetServer } from 'net';
@@ -7,6 +8,13 @@ import type { Server } from 'http';
 import type { ProjectData } from '../../src/models/index.js';
 import { readJsonFile, writeJsonFile, ensureDir } from '../../src/utils/file-helpers.js';
 import * as path from 'path';
+
+const require = createRequire(import.meta.url);
+const packageMetadata = require('../../package.json') as {
+  version?: string;
+  repository?: string | { url?: string };
+  homepage?: string;
+};
 
 async function getAvailablePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -62,6 +70,18 @@ describe('Web Server API', () => {
       const data = await res.json() as any[];
       expect(Array.isArray(data)).toBe(true);
       expect(data[0].project.id).toBe(projectId);
+    });
+  });
+
+  describe('GET /api/meta', () => {
+    it('should expose package metadata without falling back to 0.0.0', async () => {
+      const res = await fetch(api('/api/meta'));
+      expect(res.status).toBe(200);
+
+      const data = await res.json() as { version: string; repositoryUrl: string };
+      expect(data.version).toBe(packageMetadata.version);
+      expect(data.version).not.toBe('0.0.0');
+      expect(data.repositoryUrl).toContain('github.com/shiquda/roadmap-skill');
     });
   });
 

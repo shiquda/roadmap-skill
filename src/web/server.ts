@@ -76,22 +76,41 @@ function resolveAppMetadata(): { version: string; repositoryUrl: string } {
     repositoryUrl: 'https://github.com/shiquda/roadmap-skill',
   };
 
+  const candidates: string[] = [];
+
   try {
     const require = createRequire(import.meta.url);
-    const pkg = require('../../package.json') as {
-      version?: string;
-      repository?: string | { url?: string };
-      homepage?: string;
-    };
-    const repository = typeof pkg.repository === 'string' ? pkg.repository : pkg.repository?.url;
+    try {
+      const pkgRoot = path.dirname(require.resolve('../../package.json'));
+      candidates.push(path.join(pkgRoot, 'package.json'));
+    } catch {
+    }
 
-    return {
-      version: pkg.version ?? fallback.version,
-      repositoryUrl: normalizeRepositoryUrl(repository) ?? pkg.homepage ?? fallback.repositoryUrl,
-    };
+    candidates.push(path.join(process.cwd(), 'package.json'));
+    candidates.push(path.join(__dirname, '../../package.json'));
+    candidates.push(path.join(__dirname, '../package.json'));
+
+    for (const candidate of candidates) {
+      if (!existsSync(candidate)) {
+        continue;
+      }
+
+      const pkg = require(candidate) as {
+        version?: string;
+        repository?: string | { url?: string };
+        homepage?: string;
+      };
+      const repository = typeof pkg.repository === 'string' ? pkg.repository : pkg.repository?.url;
+
+      return {
+        version: pkg.version ?? fallback.version,
+        repositoryUrl: normalizeRepositoryUrl(repository) ?? pkg.homepage ?? fallback.repositoryUrl,
+      };
+    }
   } catch {
-    return fallback;
   }
+
+  return fallback;
 }
 
 const appMetadata = resolveAppMetadata();
