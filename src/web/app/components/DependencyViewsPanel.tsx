@@ -16,8 +16,10 @@ import {
   type OnConnect,
   type OnEdgesDelete,
   type EdgeMouseHandler,
+  type ReactFlowInstance,
 } from '@xyflow/react';
 import * as dagre from 'dagre';
+import { toPng } from 'html-to-image';
 
 import { getItem, removeItem, setItem, STORAGE_KEYS } from '../utils/storage.js';
 import TagBadge from './TagBadge.js';
@@ -314,6 +316,7 @@ export default function DependencyViewsPanel({
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [isUpdatingEdge, setIsUpdatingEdge] = useState(false);
   const [isGraphListCollapsed, setIsGraphListCollapsed] = useState(false);
+  const [isExportingImage, setIsExportingImage] = useState(false);
 
   // ReactFlow state
   const [nodes, setNodes, onNodesChange] = useNodesState<TaskFlowNode>([]);
@@ -323,6 +326,8 @@ export default function DependencyViewsPanel({
   const projectIdRef = useRef(projectId);
   const selectedGraphIdRef = useRef(selectedGraphId);
   const selectedEdgeIdRef = useRef<string | null>(selectedEdgeId);
+  const reactFlowWrapperRef = useRef<HTMLDivElement | null>(null);
+  const reactFlowInstanceRef = useRef<ReactFlowInstance<TaskFlowNode, Edge> | null>(null);
   projectIdRef.current = projectId;
   selectedGraphIdRef.current = selectedGraphId;
   selectedEdgeIdRef.current = selectedEdgeId;
@@ -592,6 +597,43 @@ export default function DependencyViewsPanel({
     setSelectedEdgeId(edge.id);
   }, []);
 
+  const handleExportImage = useCallback(async () => {
+    const viewport = reactFlowWrapperRef.current?.querySelector('.react-flow__viewport');
+    if (!(viewport instanceof HTMLElement)) {
+      alert('Graph canvas is not ready to export yet.');
+      return;
+    }
+
+    setIsExportingImage(true);
+    try {
+      reactFlowInstanceRef.current?.fitView({ padding: 0.2, duration: 0 });
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+
+      const dataUrl = await toPng(viewport, {
+        backgroundColor: '#f8fafc',
+        pixelRatio: 2,
+        cacheBust: true,
+      });
+
+      const downloadLink = document.createElement('a');
+      const exportName = (currentView?.name || 'dependency-graph')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'dependency-graph';
+      downloadLink.download = `${exportName}.png`;
+      downloadLink.href = dataUrl;
+      downloadLink.click();
+    } catch (error) {
+      console.error('Failed to export graph image:', error);
+      alert('Failed to export graph image. Please try again.');
+    } finally {
+      setIsExportingImage(false);
+    }
+  }, [currentView?.name]);
+
   // Create graph
   const handleCreateGraph = useCallback(async () => {
     const pid = projectIdRef.current;
@@ -781,7 +823,7 @@ export default function DependencyViewsPanel({
       </aside>
 
       {/* Main Canvas */}
-      <div className="flex-1 relative rounded-2xl overflow-hidden shadow-sm border border-white/50 bg-slate-50">
+      <div ref={reactFlowWrapperRef} className="flex-1 relative rounded-2xl overflow-hidden shadow-sm border border-white/50 bg-slate-50">
         {!selectedGraphId ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center text-slate-400">
@@ -808,6 +850,15 @@ export default function DependencyViewsPanel({
                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-xl shadow-sm border border-slate-100 hover:border-emerald-200 hover:shadow-md text-xs font-bold text-slate-700 transition-all"
                >
                  <span className="text-emerald-500 text-sm leading-none">+</span> Add Task
+               </button>
+               <button
+                 type="button"
+                 onClick={() => void handleExportImage()}
+                 disabled={isExportingImage || nodes.length === 0}
+                 className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-xl shadow-sm border border-slate-100 hover:border-sky-200 hover:shadow-md text-xs font-bold text-slate-700 transition-all disabled:cursor-not-allowed disabled:border-slate-100 disabled:text-slate-400"
+               >
+                 <span className="text-sky-500 text-sm leading-none">↓</span>
+                 {isExportingImage ? 'Exporting...' : 'Export PNG'}
                </button>
               </div>
 
@@ -860,6 +911,9 @@ export default function DependencyViewsPanel({
               onEdgesDelete={handleEdgesDelete}
               onEdgeClick={handleEdgeClick}
               onPaneClick={() => setSelectedEdgeId(null)}
+              onInit={(instance) => {
+                reactFlowInstanceRef.current = instance;
+              }}
               nodeTypes={nodeTypes}
               nodesDraggable={false}
               fitView

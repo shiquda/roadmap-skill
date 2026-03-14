@@ -31,6 +31,11 @@ interface GraphSummary {
   nodeCount?: number;
 }
 
+interface AppMeta {
+  version: string;
+  repositoryUrl: string;
+}
+
 interface Task {
   id: string;
   title: string;
@@ -119,6 +124,10 @@ const App: React.FC = () => {
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
   const [isProjectSidebarCollapsed, setIsProjectSidebarCollapsed] = useState(false);
+  const [appMeta, setAppMeta] = useState<AppMeta>({
+    version: '0.0.0',
+    repositoryUrl: 'https://github.com/shiquda/roadmap-skill',
+  });
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   // Load persisted state on mount
@@ -161,6 +170,20 @@ const App: React.FC = () => {
       .then(res => res.json())
       .then(data => {
         setProjects(data as ProjectSummary[]);
+      });
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/meta')
+      .then(res => res.json())
+      .then(data => {
+        const meta = data as Partial<AppMeta>;
+        if (meta.version && meta.repositoryUrl) {
+          setAppMeta({ version: meta.version, repositoryUrl: meta.repositoryUrl });
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('Failed to load app metadata', error);
       });
   }, []);
 
@@ -973,6 +996,27 @@ const App: React.FC = () => {
                 className="hidden"
               />
             </label>
+            <a
+              href={appMeta.repositoryUrl}
+              target="_blank"
+              rel="noreferrer"
+              className={`w-full flex items-center text-sm font-semibold text-slate-500 hover:bg-white/50 rounded-xl transition-all ${
+                isProjectSidebarCollapsed ? 'justify-center px-2 py-3' : 'gap-3 px-4 py-3'
+              }`}
+              title={isProjectSidebarCollapsed ? `GitHub · v${appMeta.version}` : 'Open GitHub repository'}
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 flex-shrink-0 fill-current text-slate-500">
+                <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.09 3.29 9.4 7.86 10.92.57.1.78-.25.78-.56 0-.27-.01-1.17-.02-2.13-3.2.7-3.88-1.36-3.88-1.36-.52-1.34-1.28-1.7-1.28-1.7-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.76 2.7 1.25 3.36.95.1-.75.4-1.25.72-1.54-2.56-.29-5.26-1.28-5.26-5.69 0-1.26.45-2.3 1.18-3.11-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.15 1.19A10.9 10.9 0 0 1 12 6.03c.97 0 1.95.13 2.87.38 2.18-1.5 3.14-1.19 3.14-1.19.63 1.58.24 2.75.12 3.04.74.81 1.18 1.85 1.18 3.11 0 4.42-2.71 5.39-5.29 5.67.41.36.78 1.08.78 2.18 0 1.58-.01 2.85-.01 3.24 0 .31.2.67.79.55A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z" />
+              </svg>
+              {!isProjectSidebarCollapsed && (
+                <span className="flex min-w-0 items-center justify-between gap-3 w-full">
+                  <span className="truncate">GitHub</span>
+                  <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    v{appMeta.version}
+                  </span>
+                </span>
+              )}
+            </a>
           </div>
         </aside>
 

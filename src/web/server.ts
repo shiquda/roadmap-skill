@@ -50,11 +50,53 @@ function resolveAppPath(): string {
 const tagService = new TagService(storage);
 const dependencyViewService = new DependencyViewService(storage);
 
+function normalizeRepositoryUrl(repository: string | undefined): string | null {
+  if (!repository) {
+    return null;
+  }
+
+  if (repository.startsWith('git@github.com:')) {
+    return `https://github.com/${repository.slice('git@github.com:'.length).replace(/\.git$/, '')}`;
+  }
+
+  return repository.replace(/^git\+/, '').replace(/\.git$/, '');
+}
+
+function resolveAppMetadata(): { version: string; repositoryUrl: string } {
+  const fallback = {
+    version: '0.0.0',
+    repositoryUrl: 'https://github.com/shiquda/roadmap-skill',
+  };
+
+  try {
+    const require = createRequire(import.meta.url);
+    const pkg = require('../../package.json') as {
+      version?: string;
+      repository?: string | { url?: string };
+      homepage?: string;
+    };
+    const repository = typeof pkg.repository === 'string' ? pkg.repository : pkg.repository?.url;
+
+    return {
+      version: pkg.version ?? fallback.version,
+      repositoryUrl: normalizeRepositoryUrl(repository) ?? pkg.homepage ?? fallback.repositoryUrl,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+const appMetadata = resolveAppMetadata();
+
 export function createServer(port: number = 7860): Promise<Server> {
   return new Promise((resolve, reject) => {
     const app = express();
 
     app.use(express.json());
+
+    app.get('/api/meta', (_req, res) => {
+      res.json(appMetadata);
+    });
 
     app.get('/api/projects', async (_req, res) => {
       try {
