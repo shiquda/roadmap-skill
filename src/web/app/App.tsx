@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { getItem, setItem, STORAGE_KEYS } from './utils/storage.js';
 import TagBadge from './components/TagBadge.js';
 import TagFilter from './components/TagFilter.js';
@@ -28,6 +28,7 @@ interface GraphSummary {
   description: string;
   dimension: string | null;
   revision: number;
+  nodeCount?: number;
 }
 
 interface Task {
@@ -73,7 +74,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: str
 const PRIORITY_CONFIG: Record<string, { label: string; color: string; bgColor: string }> = {
   critical: { label: 'Critical', color: 'text-rose-600', bgColor: 'bg-rose-50' },
   high: { label: 'High', color: 'text-orange-600', bgColor: 'bg-orange-50' },
-  medium: { label: 'Medium', color: 'text-amber-600', bgColor: 'bg-amber-50' },
+  medium: { label: 'Medium', color: 'text-blue-600', bgColor: 'bg-blue-50' },
   low: { label: 'Low', color: 'text-emerald-600', bgColor: 'bg-emerald-50' },
 };
 
@@ -118,6 +119,7 @@ const App: React.FC = () => {
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
   const [isProjectSidebarCollapsed, setIsProjectSidebarCollapsed] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   // Load persisted state on mount
   useEffect(() => {
@@ -126,9 +128,12 @@ const App: React.FC = () => {
       setSelectedProject(savedProjectId);
     }
 
-    const savedViewPreferences = getItem<{ cardMode: CardMode }>(STORAGE_KEYS.VIEW_PREFERENCES);
+    const savedViewPreferences = getItem<{ cardMode?: CardMode; workspaceMode?: WorkspaceMode }>(STORAGE_KEYS.VIEW_PREFERENCES);
     if (savedViewPreferences?.cardMode) {
       setCardMode(savedViewPreferences.cardMode);
+    }
+    if (savedViewPreferences?.workspaceMode) {
+      setWorkspaceMode(savedViewPreferences.workspaceMode);
     }
   }, []);
 
@@ -145,11 +150,11 @@ const App: React.FC = () => {
   // Persist view preferences when they change (debounced)
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      setItem(STORAGE_KEYS.VIEW_PREFERENCES, { cardMode });
+      setItem(STORAGE_KEYS.VIEW_PREFERENCES, { cardMode, workspaceMode });
     }, 500);
 
     return () => clearTimeout(timeoutId);
-  }, [cardMode]);
+  }, [cardMode, workspaceMode]);
 
   useEffect(() => {
     fetch('/api/projects')
@@ -200,6 +205,21 @@ const App: React.FC = () => {
       setSelectedTagIds([]);
     }
   }, [selectedProject]);
+
+  useEffect(() => {
+    const handleGlobalSearchShortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'f') {
+        return;
+      }
+
+      event.preventDefault();
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    };
+
+    window.addEventListener('keydown', handleGlobalSearchShortcut);
+    return () => window.removeEventListener('keydown', handleGlobalSearchShortcut);
+  }, []);
 
   const tagsWithTaskCounts = useMemo(() => {
     if (!selectedProject) {
@@ -820,6 +840,7 @@ const App: React.FC = () => {
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
             <input
+              ref={searchInputRef}
               type="text"
               value={searchKeyword}
               onChange={(e) => setSearchKeyword(e.target.value)}
@@ -1051,6 +1072,11 @@ const App: React.FC = () => {
               projectName={projects.find(project => project.project.id === selectedProject)?.project.name}
               onGraphsChange={setGraphViews}
               displayMode={cardMode}
+              tags={tagsWithTaskCounts.map((tag) => ({
+                id: tag.id,
+                name: tag.name,
+                color: tag.color,
+              }))}
               tasks={tasks
                 .filter(item => !selectedProject || item.project.id === selectedProject)
                 .map(item => ({
@@ -1059,6 +1085,7 @@ const App: React.FC = () => {
                   status: normalizeStatus(item.task.status),
                   priority: item.task.priority as 'low' | 'medium' | 'high' | 'critical',
                   description: item.task.description,
+                  tags: item.task.tags || [],
                 }))}
             />
           )}

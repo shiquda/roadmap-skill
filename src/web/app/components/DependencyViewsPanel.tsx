@@ -19,6 +19,9 @@ import {
 } from '@xyflow/react';
 import * as dagre from 'dagre';
 
+import { getItem, removeItem, setItem, STORAGE_KEYS } from '../utils/storage.js';
+import TagBadge from './TagBadge.js';
+
 // ─── Interfaces ────────────────────────────────────────────────────────────────
 
 interface GraphSummary {
@@ -27,6 +30,7 @@ interface GraphSummary {
   description: string;
   dimension: string | null;
   revision: number;
+  nodeCount: number;
 }
 
 interface ViewNode {
@@ -64,6 +68,13 @@ interface TaskItem {
   status: string;
   priority: 'low' | 'medium' | 'high' | 'critical';
   description?: string;
+  tags: string[];
+}
+
+interface TagItem {
+  id: string;
+  name: string;
+  color: string;
 }
 
 type DisplayMode = 'compact' | 'detailed';
@@ -73,13 +84,19 @@ interface DependencyViewsPanelProps {
   projectName?: string;
   displayMode: DisplayMode;
   tasks: TaskItem[];
+  tags: TagItem[];
   onGraphsChange: (graphs: GraphSummary[]) => void;
 }
+
+type SavedGraphSelections = Record<string, string>;
 
 // ─── ReactFlow custom node data
 
 interface TaskNodeData extends Record<string, unknown> {
   task: TaskItem;
+  tagMap: Record<string, TagItem>;
+  isDone: boolean;
+  isReady: boolean;
   displayMode: DisplayMode;
   onAddNext: (taskId: string) => void;
   onRemove: (taskId: string) => void;
@@ -98,9 +115,9 @@ const DISPLAY_MODE_CONFIG: Record<DisplayMode, { nodeWidth: number; nodeHeight: 
   },
   detailed: {
     nodeWidth: 300,
-    nodeHeight: 130,
+    nodeHeight: 168,
     layerXGap: 350,
-    layerYGap: 180,
+    layerYGap: 220,
   },
 };
 
@@ -152,6 +169,9 @@ function computeAutoLayout(
 
 function TaskNodeComponent({ data }: NodeProps<TaskFlowNode>) {
   const task = data.task as TaskItem;
+  const tagMap = data.tagMap as Record<string, TagItem>;
+  const isDone = data.isDone as boolean;
+  const isReady = data.isReady as boolean;
   const displayMode = data.displayMode as DisplayMode;
   const onAddNext = data.onAddNext as (id: string) => void;
   const onRemove = data.onRemove as (id: string) => void;
@@ -159,11 +179,30 @@ function TaskNodeComponent({ data }: NodeProps<TaskFlowNode>) {
   const status = STATUS_CONFIG[task.status] ?? { label: task.status, cls: 'bg-slate-100 text-slate-600' };
   const layout = DISPLAY_MODE_CONFIG[displayMode];
   const isCompact = displayMode === 'compact';
+  const surfaceStyle = isDone
+    ? {
+        width: layout.nodeWidth,
+        border: `2px solid ${color}`,
+        boxShadow: `0 2px 10px ${color}18`,
+        opacity: 0.55,
+      }
+    : isReady
+      ? {
+          width: layout.nodeWidth,
+          border: `2px solid ${color}`,
+          boxShadow: `0 0 0 4px ${color}18, 0 16px 36px ${color}35`,
+          transform: 'translateY(-2px)',
+        }
+      : {
+          width: layout.nodeWidth,
+          border: `2px solid ${color}`,
+          boxShadow: `0 4px 20px ${color}25`,
+        };
 
   return (
     <div
       className="bg-white rounded-2xl overflow-hidden"
-      style={{ width: layout.nodeWidth, border: `2px solid ${color}`, boxShadow: `0 4px 20px ${color}25` }}
+      style={surfaceStyle}
     >
       <Handle
         type="target"
@@ -178,15 +217,42 @@ function TaskNodeComponent({ data }: NodeProps<TaskFlowNode>) {
         <span className="text-[10px] font-black uppercase tracking-widest" style={{ color }}>
           {task.priority}
         </span>
-        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${status.cls}`}>
-          {status.label}
-        </span>
+        <div className="flex items-center gap-1.5">
+          {isReady && !isDone && (
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-emerald-700">
+              Ready
+            </span>
+          )}
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${status.cls}`}>
+            {status.label}
+          </span>
+        </div>
       </div>
       {/* Title + description */}
       <div className="px-4 pt-2.5 pb-1">
         <p className={`font-bold text-slate-800 leading-snug line-clamp-2 ${isCompact ? 'text-[13px]' : 'text-sm'}`}>{task.title}</p>
         {!isCompact && task.description && (
           <p className="text-xs text-slate-400 mt-1 line-clamp-2 leading-relaxed">{task.description}</p>
+        )}
+        {!isCompact && task.tags.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {task.tags.map((tagId) => {
+              const tag = tagMap[tagId];
+              if (!tag) {
+                return null;
+              }
+
+              return (
+                <TagBadge
+                  key={tagId}
+                  name={tag.name}
+                  color={tag.color}
+                  size="sm"
+                  className="rounded-lg font-bold"
+                />
+              );
+            })}
+          </div>
         )}
       </div>
       {/* Actions */}
@@ -229,6 +295,7 @@ export default function DependencyViewsPanel({
   projectName,
   displayMode,
   tasks,
+  tags,
   onGraphsChange,
 }: DependencyViewsPanelProps) {
   const [graphs, setGraphs] = useState<GraphSummary[]>([]);
@@ -259,6 +326,10 @@ export default function DependencyViewsPanel({
   projectIdRef.current = projectId;
   selectedGraphIdRef.current = selectedGraphId;
   selectedEdgeIdRef.current = selectedEdgeId;
+  const tagMap = useMemo(
+    () => Object.fromEntries(tags.map((tag) => [tag.id, tag])),
+    [tags]
+  );
 
   // Load graphs when projectId changes
   useEffect(() => {
@@ -270,13 +341,60 @@ export default function DependencyViewsPanel({
     }
     void (async () => {
       const res = await fetch(`/api/projects/${projectId}/dependency-views`);
-      const payload = await res.json() as { success: boolean; data: GraphSummary[] };
+      const payload = await res.json() as { success: boolean; data: Array<GraphSummary & { nodes: ViewNode[] }> };
       if (payload.success) {
-        setGraphs(payload.data);
-        onGraphsChange(payload.data);
+        const nextGraphs = payload.data.map((graph) => ({
+          ...graph,
+          nodeCount: graph.nodes.length,
+        }));
+        setGraphs(nextGraphs);
+        onGraphsChange(nextGraphs);
+        setSelectedGraphId((current) => {
+          if (current && nextGraphs.some((graph) => graph.id === current)) {
+            return current;
+          }
+          const savedSelections = getItem<SavedGraphSelections>(STORAGE_KEYS.SELECTED_GRAPH_BY_PROJECT);
+          const savedGraphId = projectId ? savedSelections?.[projectId] : null;
+          if (savedGraphId && nextGraphs.some((graph) => graph.id === savedGraphId)) {
+            return savedGraphId;
+          }
+          return nextGraphs[0]?.id ?? null;
+        });
       }
     })();
   }, [projectId, onGraphsChange]);
+
+  useEffect(() => {
+    if (!projectId) {
+      return;
+    }
+
+    const savedSelections = getItem<SavedGraphSelections>(STORAGE_KEYS.SELECTED_GRAPH_BY_PROJECT) ?? {};
+
+    if (selectedGraphId) {
+      if (savedSelections[projectId] === selectedGraphId) {
+        return;
+      }
+
+      setItem(STORAGE_KEYS.SELECTED_GRAPH_BY_PROJECT, {
+        ...savedSelections,
+        [projectId]: selectedGraphId,
+      });
+      return;
+    }
+
+    if (!(projectId in savedSelections)) {
+      return;
+    }
+
+    const { [projectId]: _removedSelection, ...restSelections } = savedSelections;
+    if (Object.keys(restSelections).length === 0) {
+      removeItem(STORAGE_KEYS.SELECTED_GRAPH_BY_PROJECT);
+      return;
+    }
+
+    setItem(STORAGE_KEYS.SELECTED_GRAPH_BY_PROJECT, restSelections);
+  }, [projectId, selectedGraphId]);
 
   // Load selected view when selectedGraphId changes
   useEffect(() => {
@@ -383,6 +501,11 @@ export default function DependencyViewsPanel({
         position: { x: 0, y: 0 },
         data: {
           task: taskMap.get(n.taskId) as TaskItem,
+          tagMap,
+          isDone: (taskMap.get(n.taskId) as TaskItem).status === 'done',
+          isReady: currentView.edges
+            .filter((edge) => edge.toTaskId === n.taskId)
+            .every((edge) => taskMap.get(edge.fromTaskId)?.status === 'done'),
           displayMode,
           onAddNext: handleAddNext,
           onRemove: handleRemove,
@@ -400,7 +523,7 @@ export default function DependencyViewsPanel({
     const finalNodes = rawNodes.length > 0 ? computeAutoLayout(rawNodes, rawEdges, layoutConfig) : rawNodes;
     setNodes(finalNodes);
     setEdges(rawEdges);
-  }, [currentView, tasks, handleAddNext, handleRemove, selectedEdgeId, displayMode, setNodes, setEdges]);
+  }, [currentView, tasks, tagMap, handleAddNext, handleRemove, selectedEdgeId, displayMode, setNodes, setEdges]);
 
   useEffect(() => {
     if (!currentView || !selectedEdgeId) {
@@ -465,7 +588,6 @@ export default function DependencyViewsPanel({
       to: taskMap.get(selectedEdge.toTaskId) ?? selectedEdge.toTaskId,
     };
   }, [selectedEdge, tasks]);
-
   const handleEdgeClick: EdgeMouseHandler = useCallback((_event, edge) => {
     setSelectedEdgeId(edge.id);
   }, []);
@@ -484,7 +606,7 @@ export default function DependencyViewsPanel({
       const v = payload.data;
       const summary: GraphSummary = {
         id: v.id, name: v.name, description: v.description,
-        dimension: v.dimension, revision: v.revision,
+        dimension: v.dimension, revision: v.revision, nodeCount: v.nodes.length,
       };
       const updated = [...graphs, summary];
       setGraphs(updated);
@@ -628,14 +750,14 @@ export default function DependencyViewsPanel({
                   <div className="flex flex-col items-center gap-1">
                     <span className="text-[11px] font-black uppercase tracking-widest">{graph.name.slice(0, 2)}</span>
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${selectedGraphId === graph.id ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
-                      {graph.revision}
+                      {selectedGraphId === graph.id && currentView ? currentView.nodes.length : graph.nodeCount}n
                     </span>
                   </div>
                 ) : (
                   <>
                     <div className="truncate pr-5">{graph.name}</div>
                     <div className={`text-[10px] mt-0.5 font-bold px-2 py-0.5 rounded-full inline-block ${selectedGraphId === graph.id ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
-                      rev {graph.revision}{selectedGraphId === graph.id && currentView ? ` · ${currentView.nodes.length} nodes` : ''}
+                      {selectedGraphId === graph.id && currentView ? currentView.nodes.length : graph.nodeCount} nodes
                     </div>
                   </>
                 )}
@@ -680,14 +802,14 @@ export default function DependencyViewsPanel({
           <>
             {/* Toolbar overlay */}
              <div className="absolute top-3 left-3 z-10 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => { setAddTaskSuccessorId(null); setSelectedAddTaskIds([]); setIsAddTaskOpen(true); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-xl shadow-sm border border-slate-100 hover:border-emerald-200 hover:shadow-md text-xs font-bold text-slate-700 transition-all"
-              >
-                <span className="text-emerald-500 text-sm leading-none">+</span> Add Task
-              </button>
-             </div>
+               <button
+                 type="button"
+                 onClick={() => { setAddTaskSuccessorId(null); setSelectedAddTaskIds([]); setIsAddTaskOpen(true); }}
+                 className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-xl shadow-sm border border-slate-100 hover:border-emerald-200 hover:shadow-md text-xs font-bold text-slate-700 transition-all"
+               >
+                 <span className="text-emerald-500 text-sm leading-none">+</span> Add Task
+               </button>
+              </div>
 
              <div className={`absolute top-3 right-3 z-10 rounded-2xl border border-white/70 bg-white/95 p-3 shadow-lg backdrop-blur-sm ${isCompact ? 'w-64' : 'w-72'}`}>
                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Edge Actions</p>
