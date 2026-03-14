@@ -64,6 +64,10 @@ interface DependencyView {
   edges: ViewEdge[];
 }
 
+interface DependencyViewMutationResponse {
+  view: DependencyView;
+}
+
 interface TaskItem {
   id: string;
   title: string;
@@ -91,6 +95,21 @@ interface DependencyViewsPanelProps {
 }
 
 type SavedGraphSelections = Record<string, string>;
+
+function normalizeDependencyView(
+  payload: DependencyView | DependencyViewMutationResponse | null | undefined
+): DependencyView | null {
+  const view = payload && 'view' in payload ? payload.view : payload;
+  if (!view) {
+    return null;
+  }
+
+  return {
+    ...view,
+    nodes: Array.isArray(view.nodes) ? view.nodes : [],
+    edges: Array.isArray(view.edges) ? view.edges : [],
+  };
+}
 
 // ─── ReactFlow custom node data
 
@@ -411,8 +430,10 @@ export default function DependencyViewsPanel({
     setIsLoading(true);
     void (async () => {
       const res = await fetch(`/api/projects/${projectId}/dependency-views/${selectedGraphId}`);
-      const payload = await res.json() as { success: boolean; data: DependencyView };
-      if (payload.success) setCurrentView(payload.data);
+      const payload = await res.json() as { success: boolean; data: DependencyView | DependencyViewMutationResponse };
+      if (payload.success) {
+        setCurrentView(normalizeDependencyView(payload.data));
+      }
       setIsLoading(false);
     })();
   }, [projectId, selectedGraphId]);
@@ -432,8 +453,10 @@ export default function DependencyViewsPanel({
       const res = await fetch(`/api/projects/${pid}/dependency-views/${gid}/nodes/${taskId}`, {
         method: 'DELETE',
       });
-      const payload = await res.json() as { success: boolean; data: DependencyView };
-      if (payload.success) setCurrentView(payload.data);
+      const payload = await res.json() as { success: boolean; data: DependencyView | DependencyViewMutationResponse };
+      if (payload.success) {
+        setCurrentView(normalizeDependencyView(payload.data));
+      }
     })();
   }, []);
 
@@ -447,12 +470,17 @@ export default function DependencyViewsPanel({
       const res = await fetch(`/api/projects/${pid}/dependency-views/${gid}/edges/${edgeId}`, {
         method: 'DELETE',
       });
-      const payload = await res.json() as { success?: boolean; data?: DependencyView; error?: string };
-      if (!res.ok || !payload.success || !payload.data) {
+      const payload = await res.json() as {
+        success?: boolean;
+        data?: DependencyView | DependencyViewMutationResponse;
+        error?: string;
+      };
+      const nextView = normalizeDependencyView(payload.data);
+      if (!res.ok || !payload.success || !nextView) {
         alert(payload.error ?? 'Failed to delete edge');
         return;
       }
-      setCurrentView(payload.data);
+      setCurrentView(nextView);
       setSelectedEdgeId(null);
     } finally {
       setIsUpdatingEdge(false);
@@ -475,13 +503,18 @@ export default function DependencyViewsPanel({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fromTaskId: edge.toTaskId, toTaskId: edge.fromTaskId }),
       });
-      const updatePayload = await updateRes.json() as { success?: boolean; data?: DependencyView; error?: string };
-      if (!updateRes.ok || !updatePayload.success || !updatePayload.data) {
+      const updatePayload = await updateRes.json() as {
+        success?: boolean;
+        data?: DependencyView | DependencyViewMutationResponse;
+        error?: string;
+      };
+      const nextView = normalizeDependencyView(updatePayload.data);
+      if (!updateRes.ok || !updatePayload.success || !nextView) {
         alert(updatePayload.error ?? 'Failed to reverse edge');
         return;
       }
 
-      setCurrentView(updatePayload.data);
+      setCurrentView(nextView);
       setSelectedEdgeId(null);
     } finally {
       setIsUpdatingEdge(false);
@@ -551,8 +584,10 @@ export default function DependencyViewsPanel({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fromTaskId: connection.source, toTaskId: connection.target }),
       });
-      const payload = await res.json() as { success: boolean; data: DependencyView };
-      if (payload.success) setCurrentView(payload.data);
+      const payload = await res.json() as { success: boolean; data: DependencyView | DependencyViewMutationResponse };
+      if (payload.success) {
+        setCurrentView(normalizeDependencyView(payload.data));
+      }
     })();
   }, []);
 
@@ -566,9 +601,9 @@ export default function DependencyViewsPanel({
         const res = await fetch(`/api/projects/${pid}/dependency-views/${gid}/edges/${edge.id}`, {
           method: 'DELETE',
         });
-        const payload = await res.json() as { success: boolean; data: DependencyView };
+        const payload = await res.json() as { success: boolean; data: DependencyView | DependencyViewMutationResponse };
         if (payload.success) {
-          setCurrentView(payload.data);
+          setCurrentView(normalizeDependencyView(payload.data));
           if (edge.id === selectedEdgeIdRef.current) {
             setSelectedEdgeId(null);
           }
@@ -643,9 +678,12 @@ export default function DependencyViewsPanel({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: newGraphName.trim(), description: newGraphDesc }),
     });
-    const payload = await res.json() as { success: boolean; data: DependencyView };
+    const payload = await res.json() as { success: boolean; data: DependencyView | DependencyViewMutationResponse };
     if (payload.success) {
-      const v = payload.data;
+      const v = normalizeDependencyView(payload.data);
+      if (!v) {
+        return;
+      }
       const summary: GraphSummary = {
         id: v.id, name: v.name, description: v.description,
         dimension: v.dimension, revision: v.revision, nodeCount: v.nodes.length,
@@ -688,17 +726,26 @@ export default function DependencyViewsPanel({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ taskId }),
       });
-      const addPayload = await addRes.json() as { success: boolean; data: DependencyView; error?: string };
+      const addPayload = await addRes.json() as {
+        success: boolean;
+        data: DependencyView | DependencyViewMutationResponse;
+        error?: string;
+      };
       if (!addPayload.success) { alert(addPayload.error ?? `Failed to add task ${taskId}`); continue; }
-      updatedView = addPayload.data;
+      updatedView = normalizeDependencyView(addPayload.data);
       if (addTaskSuccessorId) {
         const edgeRes = await fetch(`/api/projects/${pid}/dependency-views/${gid}/edges`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fromTaskId: addTaskSuccessorId, toTaskId: taskId }),
         });
-        const edgePayload = await edgeRes.json() as { success: boolean; data: DependencyView };
-        if (edgePayload.success) updatedView = edgePayload.data;
+        const edgePayload = await edgeRes.json() as {
+          success: boolean;
+          data: DependencyView | DependencyViewMutationResponse;
+        };
+        if (edgePayload.success) {
+          updatedView = normalizeDependencyView(edgePayload.data);
+        }
       }
     }
     if (updatedView) setCurrentView(updatedView);

@@ -50,6 +50,14 @@ function resolveAppPath(): string {
 const tagService = new TagService(storage);
 const dependencyViewService = new DependencyViewService(storage);
 
+function unwrapDependencyViewMutation(data: unknown): unknown {
+  if (typeof data !== 'object' || data === null || !('view' in data)) {
+    return data;
+  }
+
+  return (data as { view: unknown }).view;
+}
+
 function normalizeRepositoryUrl(repository: string | undefined): string | null {
   if (!repository) {
     return null;
@@ -128,7 +136,7 @@ export function createServer(port: number = 7860): Promise<Server> {
           res.status(statusCode).json({ error: result.error });
           return;
         }
-        res.json({ success: true, data: result.data });
+        res.json({ success: true, data: unwrapDependencyViewMutation(result.data) });
       } catch (error) {
         res.status(500).json({ error: (error as Error).message });
       }
@@ -142,7 +150,7 @@ export function createServer(port: number = 7860): Promise<Server> {
           res.status(statusCode).json({ error: result.error });
           return;
         }
-        res.json({ success: true, data: result.data });
+        res.json({ success: true, data: unwrapDependencyViewMutation(result.data) });
       } catch (error) {
         res.status(500).json({ error: (error as Error).message });
       }
@@ -156,7 +164,7 @@ export function createServer(port: number = 7860): Promise<Server> {
           res.status(statusCode).json({ error: result.error });
           return;
         }
-        res.json({ success: true, data: result.data });
+        res.json({ success: true, data: unwrapDependencyViewMutation(result.data) });
       } catch (error) {
         res.status(500).json({ error: (error as Error).message });
       }
@@ -170,7 +178,7 @@ export function createServer(port: number = 7860): Promise<Server> {
           res.status(statusCode).json({ error: result.error });
           return;
         }
-        res.json({ success: true, data: result.data });
+        res.json({ success: true, data: unwrapDependencyViewMutation(result.data) });
       } catch (error) {
         res.status(500).json({ error: (error as Error).message });
       }
@@ -198,7 +206,7 @@ export function createServer(port: number = 7860): Promise<Server> {
           res.status(statusCode).json({ error: result.error });
           return;
         }
-        res.json({ success: true, data: result.data });
+        res.json({ success: true, data: unwrapDependencyViewMutation(result.data) });
       } catch (error) {
         res.status(500).json({ error: (error as Error).message });
       }
@@ -217,7 +225,7 @@ export function createServer(port: number = 7860): Promise<Server> {
           res.status(statusCode).json({ error: result.error });
           return;
         }
-        res.json({ success: true, data: result.data });
+        res.json({ success: true, data: unwrapDependencyViewMutation(result.data) });
       } catch (error) {
         res.status(500).json({ error: (error as Error).message });
       }
@@ -235,7 +243,7 @@ export function createServer(port: number = 7860): Promise<Server> {
           res.status(statusCode).json({ error: result.error });
           return;
         }
-        res.json({ success: true, data: result.data });
+        res.json({ success: true, data: unwrapDependencyViewMutation(result.data) });
       } catch (error) {
         res.status(500).json({ error: (error as Error).message });
       }
@@ -249,7 +257,7 @@ export function createServer(port: number = 7860): Promise<Server> {
           res.status(statusCode).json({ error: result.error });
           return;
         }
-        res.json({ success: true, data: result.data });
+        res.json({ success: true, data: unwrapDependencyViewMutation(result.data) });
       } catch (error) {
         res.status(500).json({ error: (error as Error).message });
       }
@@ -263,7 +271,7 @@ export function createServer(port: number = 7860): Promise<Server> {
           res.status(statusCode).json({ error: result.error });
           return;
         }
-        res.json({ success: true, data: result.data });
+        res.json({ success: true, data: unwrapDependencyViewMutation(result.data) });
       } catch (error) {
         res.status(500).json({ error: (error as Error).message });
       }
@@ -282,7 +290,7 @@ export function createServer(port: number = 7860): Promise<Server> {
           res.status(statusCode).json({ error: result.error });
           return;
         }
-        res.json({ success: true, data: result.data });
+        res.json({ success: true, data: unwrapDependencyViewMutation(result.data) });
       } catch (error) {
         res.status(500).json({ error: (error as Error).message });
       }
@@ -296,7 +304,7 @@ export function createServer(port: number = 7860): Promise<Server> {
           res.status(statusCode).json({ error: result.error });
           return;
         }
-        res.json({ success: true, data: result.data });
+        res.json({ success: true, data: unwrapDependencyViewMutation(result.data) });
       } catch (error) {
         res.status(500).json({ error: (error as Error).message });
       }

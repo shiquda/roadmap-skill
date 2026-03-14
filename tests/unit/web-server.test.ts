@@ -379,6 +379,7 @@ describe('Web Server API', () => {
       const deleteEdgeData = await deleteEdgeRes.json() as any;
       expect(deleteEdgeData.success).toBe(true);
       expect(deleteEdgeData.data.edges).toHaveLength(0);
+      expect(deleteEdgeData.data.nodes).toHaveLength(2);
     });
 
     it('should update dependency edge direction through the web API', async () => {
@@ -434,6 +435,56 @@ describe('Web Server API', () => {
       expect(updateEdgeData.data.edges).toHaveLength(1);
       expect(updateEdgeData.data.edges[0].fromTaskId).toBe(taskB.id);
       expect(updateEdgeData.data.edges[0].toTaskId).toBe(taskA.id);
+    });
+
+    it('should return a full dependency view after removing a node', async () => {
+      const createTaskA = await fetch(api('/api/tasks'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, title: 'Task A', description: '', priority: 'medium', tags: [] }),
+      });
+      const createTaskB = await fetch(api('/api/tasks'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, title: 'Task B', description: '', priority: 'medium', tags: [] }),
+      });
+
+      const { data: taskA } = await createTaskA.json() as any;
+      const { data: taskB } = await createTaskB.json() as any;
+
+      const createViewRes = await fetch(api(`/api/projects/${projectId}/dependency-views`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Delete Node Graph', description: '' }),
+      });
+      const { data: view } = await createViewRes.json() as any;
+
+      await fetch(api(`/api/projects/${projectId}/dependency-views/${view.id}/nodes`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId: taskA.id }),
+      });
+      await fetch(api(`/api/projects/${projectId}/dependency-views/${view.id}/nodes`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId: taskB.id }),
+      });
+      await fetch(api(`/api/projects/${projectId}/dependency-views/${view.id}/edges`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fromTaskId: taskA.id, toTaskId: taskB.id }),
+      });
+
+      const removeNodeRes = await fetch(api(`/api/projects/${projectId}/dependency-views/${view.id}/nodes/${taskA.id}`), {
+        method: 'DELETE',
+      });
+
+      expect(removeNodeRes.status).toBe(200);
+      const removeNodeData = await removeNodeRes.json() as any;
+      expect(removeNodeData.success).toBe(true);
+      expect(removeNodeData.data.nodes).toHaveLength(1);
+      expect(removeNodeData.data.nodes[0].taskId).toBe(taskB.id);
+      expect(removeNodeData.data.edges).toHaveLength(0);
     });
 
     it('should keep project JSON valid during concurrent dependency edge writes', async () => {
